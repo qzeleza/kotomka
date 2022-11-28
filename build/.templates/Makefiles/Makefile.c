@@ -1,5 +1,5 @@
-TARGET = plato
-CC = g++
+TARGET = @APP_NAME
+CC = gcc
 CFLAGS = -Wall
 LDFLAGS =
 
@@ -8,13 +8,13 @@ LDFLAGS =
 all: clean $(TARGET)
 
 DEPS = $(wildcard *.h)
-SRC = $(wildcard *.cpp)
-OBJ = $(patsubst %.cpp, %.o, $(SRC))
+SRC = $(wildcard *.c)
+OBJ = $(patsubst %.c, %.o, $(SRC))
 
 $(TARGET): $(OBJ)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-%.o: %.cpp $(DEPS)
+%.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 clean:

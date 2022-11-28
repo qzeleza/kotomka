@@ -1,4 +1,6 @@
 #!/bin/sh
 
 # Пишем сообщение в лог роутера о начале устаноки пакета
-logger -p err -t "PACKAGE INSTALLATION " "!!!!!! УДАЛЕНИЕ ПАКЕТА ПЛАТО !!!!!!"
+logger -p err -t "PACKAGE INSTALLATION " "УСТАНОВКА ПАКЕТА @APP_NAME!"
+
+
