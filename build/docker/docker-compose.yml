@@ -6,7 +6,7 @@ services:
     container_name: "${CONTAINER_NAME}"
     build:
       context: ../..
-      dockerfile: /Users/master/develop/apps/plato/build/docker/Dockerfile
+      dockerfile: /Users/master/develop/apps/katomka/build/docker/Dockerfile
       args:
         UID: "${UID}"
         GID: "${GID}"
@@ -16,7 +16,7 @@ services:
         APP_NAME: "${APP_NAME}"
 #    entrypoint: ${APPS_ROOT}/${APP_NAME}/build/scripts/firstrun.app
     volumes:
-        - /Users/master/develop/apps/plato:${APPS_ROOT}/${APP_NAME}
+        - /Users/master/develop/apps/katomka:${APPS_ROOT}/${APP_NAME}
 
     restart: "unless-stopped"
     stdin_open: true # docker run -i

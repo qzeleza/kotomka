@@ -1,17 +1,23 @@
 #!/bin/bash
-. ./CONFIG
-
 set -e
+
 RED="\033[1;31m";
 BLUE="\033[36m";
 NOCL="\033[m";
+
+[[ "$(pwd)" =~ '\/build' ]] || {
+    echo -e "${RED}>> Запуск скрипа возможен только из папки проекта ./build${NOCL}."
+    exit 1
+}
+
+. ./CONFIG
 
 #----------------------------------------------------------------------------------------------------------------------
 # Печатаем строку из 100  знаков равно
 #----------------------------------------------------------------------------------------------------------------------
 show_line(){
-    if [ -z "${1}" ] ; then sim='='; else sim="${1}"; fi
-    printf "${sim}%.s" {1..100} && printf '\n'
+    if [ -z "${1}" ] ; then printf "=%.s" {1..100} ; else printf "-%.s" {1..100} ; fi
+    printf '\n'
 }
 #----------------------------------------------------------------------------------------------------------------------
 # Получаем необходимую информацию о версии пакета
@@ -43,6 +49,7 @@ DOCKER_FILES_PATH=$(pwd)/docker
 ENV_FILE=${DOCKER_FILES_PATH}/.env
 DOCKER_COMP_FILE=${DOCKER_FILES_PATH}/docker-compose.yml
 DOCKER_FILE=${DOCKER_FILES_PATH}/Dockerfile
+DEVELOP_EXT=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 
 #----------------------------------------------------------------------------------------------------------------------
 #	Пути к файлам внутри контейнера
@@ -69,25 +76,72 @@ EOF
 }
 
 #----------------------------------------------------------------------------------------------------------------------
-#  Получаем ID контейнера
+#  Сбрасываем в первоначальное состояние пакет до установки языка разработки.
+#----------------------------------------------------------------------------------------------------------------------
+reset_data(){
+    rm -f "../code/main.${DEVELOP_EXT}" \
+          "../code/Makefile" \
+          "../code/main.sh" \
+          "../make/Makefile.${DEVELOP_EXT}"
+    echo -e "${RED}Пакет сброшен в первоначальное состояние, до установки языка разработки.${NOCL}"
+    show_line
+}
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#  Производим первоначальные настройки пакета в зависимости от заявленного языка разработки
 #----------------------------------------------------------------------------------------------------------------------
 set_dev_language(){
-    if ! [ -f ./make/Makefile ] ; then
-        case "${APPS_LANGUAGE}" in
-            CPP)    ext=cpp  ;;
-            C)      ext=c    ;;
-            BASH)   ext=bash ;;
 
-            *)
-                show_line
-                echo -e "${RED}Не распознан язык разработки в файле ./build/CONFIG${NOCL}"
-                echo -e "${BLUE}Текущее значение APPS_LANGUAGE = ${APPS_LANGUAGE}.${NOCL}"
-                show_line
-                exit 1
-        esac
-        cp ./make/.templates/Makefile.${ext} ./make/Makefile
+    echo -e "${BLUE}Заявленным языком разработки является ${DEVELOP_EXT}${NOCL}"
+    echo -e "${BLUE}Производим замену файлов в соответствии с установками в ./build/CONFIG ${NOCL}"
+
+    case ${DEVELOP_EXT} in
+        cpp|CPP|c|C)
+            cp -f "./.templates/Makefiles/Makefile.${DEVELOP_EXT}" "../code/Makefile.${DEVELOP_EXT}"
+            sed -i '' "s|@APP_NAME|${APP_NAME}|g"                  "../code/Makefile.${DEVELOP_EXT}"
+            cp -f "./.templates/sources/main.${DEVELOP_EXT}"       "../code/main.${DEVELOP_EXT}"
+            ;;
+        BASH|bash)
+            cp "./.templates/sources/main.sh" "../code/main.sh"
+            ;;
+        *)
+            show_line
+            echo -e "${RED}Не распознан язык разработки в файле ./build/CONFIG${NOCL}"
+            echo -e "${BLUE}Текущее значение APPS_LANGUAGE = ${APPS_LANGUAGE}.${NOCL}"
+            echo -e "${BLUE}Задайте одно из значений: C, CPP или BASH.${NOCL}"
+            show_line
+            exit 1
+            ;;
+    esac
+    cp -f "./.templates/Manifests/postinst" "../make/postinst"
+    cp -f "./.templates/Manifests/postrm" "../make/postrm"
+
+    cp -f "./.templates/Manifests/Manifest.${DEVELOP_EXT}"      "../make/Makefile.${DEVELOP_EXT}"
+    sed -i '' "s|@APP_NAME|${APP_NAME}|g" "../make/postinst"
+    sed -i '' "s|@APP_NAME|${APP_NAME}|g" "../make/postrm"
+}
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#  Проверяем соответствия флага языка разработки и текущий манифест для сборки пакета
+#----------------------------------------------------------------------------------------------------------------------
+check_dev_language(){
+
+    manifest_file=$(find .. -type f | grep "make/Makefile" | head -1)
+
+    if [ -n "${manifest_file}" ]; then
+        if ! echo "${manifest_file}" | grep -qE ".${DEVELOP_EXT}$"; then
+            echo -e "${RED}Обнаружено несоответствие файлов проекта с заявленным языком разработки!${NOCL}"
+            echo -e "${BLUE}Файл манифеста: ${manifest_file}${NOCL}"
+            set_dev_language
+        fi
+    else
+        set_dev_language
     fi
 }
+
+
 #----------------------------------------------------------------------------------------------------------------------
 #  Получаем ID контейнера
 #----------------------------------------------------------------------------------------------------------------------
@@ -221,6 +275,7 @@ image_build(){
         echo "Docker-образ собран без ошибок."
         echo "Запускаем сборку пакета в самом контейнере..."
         docker exec -w "${APPS_ROOT}/${APP_NAME}/build" --user "${USER}:${GROUP}" -it "${APP_NAME}" /bin/bash "${script_to_run}"
+        rm -f "${ENV_FILE}"
     else
         show_line; echo "Docker-образ собран с ошибками!"
         exit 1
@@ -255,6 +310,7 @@ image_rebuild(){
 # Подключаемся к контейнеру для сборки приложения в нем
 #----------------------------------------------------------------------------------------------------------------------
 manager_container_to_make(){
+
 	script_to_run="${1}"
 	run_with_root="${2:-no}"
 
@@ -311,10 +367,13 @@ show_help(){
     show_line
 }
 
-set_dev_language
 show_line
+args="$(set_debug_status "${*}")"
 
-case "$(set_debug_status "${*}")" in
+#   Сбрасываем в первоначальное состояние пакет до установки языка разработки
+if [[ "${args}" =~ data_init ]] ; then reset_data; else check_dev_language ; fi
+
+case "${args}" in
 	term|run|-tm ) 	    manager_container_to_make "" ;;
 	root|-rt) 		    manager_container_to_make "" "yes" ;;
 	make|-mk) 		    manager_container_to_make "${SCRIPT_TO_MAKE}" ;;
@@ -322,11 +381,11 @@ case "$(set_debug_status "${*}")" in
     build|-bl)          create_env_file && image_build "${SCRIPT_TO_MAKE}" ;;
     rebuild|-rb)        create_env_file && image_rebuild "${SCRIPT_TO_MAKE}" ;;
     help|-h|--help)     show_help;;
+    data_init)          ;;
 	*)                  echo -e "${RED}Не заданы аргументы запуска скрипта!${NOCL}"
 	                    show_line
                         show_help
     ;;
 esac
-
 
 

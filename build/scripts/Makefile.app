@@ -22,8 +22,8 @@ RELEASE=$(get_version_part RELEASE)
 #----------------------------------------------------------------------------------------------------------------------
 APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
 #----------------------------------------------------------------------------------------------------------------------
-
-MAKE_FILE="${BASEDIR}/make/Makefile"
+ext_makefile=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
+MAKE_FILE="$(dirname "${BASEDIR}")/make/Makefile.${ext_makefile}"
 POSTINST_FILE="${BASEDIR}/make/postinst"
 POSTRM_FILE="${BASEDIR}/make/postrm"
 
