@@ -25,6 +25,7 @@ APP_SOURCE_FILES_FILTER="/code/{*.cpp,Makefile}"
 # Данные автора
 #----------------------------------------------------------------------------------------------------------------------
 AUTHOR_NAME=AuthorName
+DOCKER_ACCOUNT_NAME=docker_account_name
 AUTHOR_EMAIL=author@email.ru
 LICENCE=Freedom-2.0
 GITHUB_ACCOUNT_NAME=github_name

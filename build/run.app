@@ -39,7 +39,7 @@ if [ -n "${STAGE}" ]; then FULL_VERSION="${VERSION} ${STAGE} ${RELEASE}"; else F
 DEBUG=YES										# флаг отладки процесса сборки образа
 #----------------------------------------------------------------------------------------------------------------------
 APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-IMAGE_NAME=$(echo "${AUTHOR_NAME}" | tr "[:upper:]" "[:lower:]")/${APP_NAME}-dev
+IMAGE_NAME=$(echo "${DOCKER_ACCOUNT_NAME}" | tr "[:upper:]" "[:lower:]")/${APP_NAME}-dev
 CONTAINER_NAME=${APP_NAME}
 
 #----------------------------------------------------------------------------------------------------------------------
