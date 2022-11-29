@@ -113,7 +113,7 @@ set_dev_language(){
             cp -f "./.templates/code/main.${DEVELOP_EXT}"     "../code/main.${DEVELOP_EXT}"
             ;;
         BASH|bash)
-            cp "./.templates/code/main.sh"                    "../code/main.sh"
+            cp "./.templates/code/main.sh"                    "../code/${APP_NAME}"
             ;;
         *)
             show_line
@@ -359,9 +359,12 @@ show_help(){
     echo "rebuild [-rb] - Удаляем готовый образ и собираем его заново с последующим запуском сборки пакета"
     echo "make    [-mk] - сборка пакета и копирование его на роутер"
     echo "copy    [-cp] - копирование уже собранного пакета на роутер"
-    echo "term    [-tm] - подключение к контейнеру без исполнения скриптов под '${USER}'."
+    echo "term    [-tr] - подключение к контейнеру без исполнения скриптов под '${USER}'."
     echo "root    [-rt] - подключение к контейнеру без исполнения скриптов под root"
     echo "debug   [-db] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
+    echo "init    [-in] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
+    echo "help    [-hl] - отображает настоящую справку"
+
     show_line "-"
     echo -e "Примеры запуска:"
     show_line "-"
@@ -376,17 +379,16 @@ show_line
 args="$(set_debug_status "${*}")"
 
 #   Сбрасываем в первоначальное состояние пакет до установки языка разработки
-if [[ "${args}" =~ data_init ]] ; then reset_data; else check_dev_language ; fi
+if [[ "${args}" =~ init|-in ]] ; then reset_data; exit 0; else check_dev_language ; fi
 
 case "${args}" in
-	term|run|-tm ) 	    manager_container_to_make "" ;;
+	term|-tr )   	    manager_container_to_make "" ;;
 	root|-rt) 		    manager_container_to_make "" "yes" ;;
 	make|-mk) 		    manager_container_to_make "${SCRIPT_TO_MAKE}" ;;
 	copy|-cp )  	    manager_container_to_make "${SCRIPT_TO_COPY}" ;;
     build|-bl)          create_env_file && image_build "${SCRIPT_TO_MAKE}" ;;
     rebuild|-rb)        create_env_file && image_rebuild "${SCRIPT_TO_MAKE}" ;;
     help|-h|--help)     show_help;;
-    data_init)          ;;
 	*)                  echo -e "${RED}${PREF}Не заданы аргументы запуска скрипта!${NOCL}"
 	                    show_line
                         show_help
