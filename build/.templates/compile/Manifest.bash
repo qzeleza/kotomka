@@ -17,7 +17,7 @@ define Package/@APP_NAME
 	TITLE:=@TITLE
 	SECTION:=utils
 	URL:=@GITHUB
-	DEPENDS:=+jq +curl +knot-dig +nano-full +cron +libpcre @DEPENDS
+	DEPENDS:=@DEPENDS
 	PKGARCH:=all
 endef
 
@@ -26,6 +26,8 @@ define Package/@APP_NAME/description
 endef
 
 define Build/Prepare
+	mkdir -p $(PKG_BUILD_DIR)
+	cp -rf @SOURCE_DIR/code/. $(PKG_BUILD_DIR)
 endef
 
 define Build/Configure

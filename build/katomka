@@ -4,21 +4,26 @@ set -e
 RED="\033[1;31m";
 BLUE="\033[36m";
 NOCL="\033[m";
+PREF='>> '
+#----------------------------------------------------------------------------------------------------------------------
+# Печатаем строку из 100  знаков равно
+#----------------------------------------------------------------------------------------------------------------------
+show_line(){
+    if [ -z "${1}" ] ; then div='=' ; else div=${1} ; fi
+    printf "%100s\n" | tr " " "${div}"
+}
 
-[[ "$(pwd)" =~ '\/build' ]] || {
-    echo -e "${RED}>> Запуск скрипа возможен только из папки проекта ./build${NOCL}."
+
+[[ "$(pwd)" =~ '/build' ]] || {
+    show_line
+    echo -e "${RED}${PREF}Запуск скрипа возможен только из папки проекта ./build${NOCL}."
+    show_line
     exit 1
 }
 
 . ./CONFIG
 
-#----------------------------------------------------------------------------------------------------------------------
-# Печатаем строку из 100  знаков равно
-#----------------------------------------------------------------------------------------------------------------------
-show_line(){
-    if [ -z "${1}" ] ; then printf "=%.s" {1..100} ; else printf "-%.s" {1..100} ; fi
-    printf '\n'
-}
+
 #----------------------------------------------------------------------------------------------------------------------
 # Получаем необходимую информацию о версии пакета
 #----------------------------------------------------------------------------------------------------------------------
@@ -79,11 +84,8 @@ EOF
 #  Сбрасываем в первоначальное состояние пакет до установки языка разработки.
 #----------------------------------------------------------------------------------------------------------------------
 reset_data(){
-    rm -f "../code/main.${DEVELOP_EXT}" \
-          "../code/Makefile" \
-          "../code/main.sh" \
-          "../make/Makefile.${DEVELOP_EXT}"
-    echo -e "${RED}Пакет сброшен в первоначальное состояние, до установки языка разработки.${NOCL}"
+    rm -rf ../code/* ../compile/*
+    echo -e "${RED}${PREF}Пакет сброшен в первоначальное состояние, до установки языка разработки.${NOCL}"
     show_line
 }
 
@@ -93,23 +95,31 @@ reset_data(){
 #----------------------------------------------------------------------------------------------------------------------
 set_dev_language(){
 
-    echo -e "${BLUE}Заявленным языком разработки является ${DEVELOP_EXT}${NOCL}"
-    echo -e "${BLUE}Производим замену файлов в соответствии с установками в ./build/CONFIG ${NOCL}"
+    case "${APPS_LANGUAGE}" in
+        C|c)        lang="Си" ;;
+        CPP|cpp)    lang="С++";;
+        BASH|bash)  lang="Bash";;
+    esac
+
+    echo -e "${BLUE}${PREF}Заявленным языком разработки является '${lang}'${NOCL}"
+    echo -e "${BLUE}${PREF}Производим замену файлов в соответствии с установками в ./build/CONFIG ${NOCL}"
+    show_line
+    rm -f ../code/Makefile.* ../code/main.* ../compile/Makefile*
 
     case ${DEVELOP_EXT} in
         cpp|CPP|c|C)
-            cp -f "./.templates/make/Makefile.${DEVELOP_EXT}" "../code/Makefile.${DEVELOP_EXT}"
-            sed -i '' "s|@APP_NAME|${APP_NAME}|g"             "../code/Makefile.${DEVELOP_EXT}"
-            cp -f "./.templates/codes/main.${DEVELOP_EXT}"    "../code/main.${DEVELOP_EXT}"
+            cp -f "./.templates/make/Makefile.${DEVELOP_EXT}" "../code/Makefile"
+            sed -i '' "s|@APP_NAME|${APP_NAME}|g"             "../code/Makefile"
+            cp -f "./.templates/code/main.${DEVELOP_EXT}"     "../code/main.${DEVELOP_EXT}"
             ;;
         BASH|bash)
-            cp "./.templates/codes/main.sh"                  "../code/main.sh"
+            cp "./.templates/code/main.sh"                    "../code/main.sh"
             ;;
         *)
             show_line
-            echo -e "${RED}Не распознан язык разработки в файле ./build/CONFIG${NOCL}"
-            echo -e "${BLUE}Текущее значение APPS_LANGUAGE = ${APPS_LANGUAGE}.${NOCL}"
-            echo -e "${BLUE}Задайте одно из значений: C, CPP или BASH.${NOCL}"
+            echo -e "${RED}${PREF}Не распознан язык разработки в файле ./build/CONFIG${NOCL}"
+            echo -e "${BLUE}${PREF}Текущее значение APPS_LANGUAGE = ${APPS_LANGUAGE}.${NOCL}"
+            echo -e "${BLUE}${PREF}Задайте одно из значений: C, CPP или BASH.${NOCL}"
             show_line
             exit 1
             ;;
@@ -132,8 +142,8 @@ check_dev_language(){
 
     if [ -n "${manifest_file}" ]; then
         if ! echo "${manifest_file}" | grep -qE ".${DEVELOP_EXT}$"; then
-            echo -e "${RED}Обнаружено несоответствие файлов проекта с заявленным языком разработки!${NOCL}"
-            echo -e "${BLUE}Файл манифеста: ${manifest_file}${NOCL}"
+            echo -e "${RED}${PREF}Обнаружено несоответствие файлов проекта с заявленным языком разработки!${NOCL}"
+            echo -e "${BLUE}${PREF}Файл манифеста: ${manifest_file}${NOCL}"
             set_dev_language
         fi
     else
@@ -171,8 +181,8 @@ connect_when_run(){
    	docker_id=${3}
    	_user=${4}
 
-   	echo "${_user}::Контейнер разработки ${CONTAINER_NAME}[${docker_id}] запущен."
-    echo "${_user}::Производим подключение к контейнеру."
+   	echo "${_user}::Контейнер разработки ${CONTAINER_NAME} запущен."
+    echo "${_user}::Производим подключение к контейнеру id = ${docker_id}."
     if [ -n "${script_to_run}" ] ; then
         docker exec -w "${APPS_ROOT}/${APP_NAME}/build" -it "${docker_id}" /bin/bash "${script_to_run}"
     else
@@ -239,7 +249,7 @@ connect_when_not_mounted(){
         fi
 
     fi
-    echo "ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА ${APP_NAME}"
+    echo "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА ${APP_NAME}"
     docker run -it --user "${_uid_}:${_gid_}" --name "${CONTAINER_NAME}" \
                --mount type=bind,src="$(dirname "$(pwd)")",dst="${APPS_ROOT}"/"${APP_NAME}" \
                "${IMAGE_NAME}" /bin/bash
@@ -259,9 +269,8 @@ image_build(){
     if ! docker ps | grep -q "${APP_NAME}" ; then
     #	то заходим внутрь контейнера и сразу запускаем сборку пакета
     #	если не создан образ, то запускаем сборку образа
-        show_line;
-        echo -e "${RED}Cборка образа может занять до 3 минут.${NOCL}"
-        echo "Запускаем сборку НОВОГО образа ${IMAGE_NAME}"
+        echo -e "${RED}${PREF}Cборка образа может занять до 3 минут.${NOCL}"
+        echo "${PREF}Запускаем сборку НОВОГО образа ${IMAGE_NAME}"
         show_line
         dev_path=$(dirname "$(pwd)")
         sed -i '' "s|.*-.*:.*{APPS_ROOT}.*{APP_NAME}|        - ${dev_path//\//\\/}:\${APPS_ROOT}\/\${APP_NAME}|g; \
@@ -272,12 +281,12 @@ image_build(){
     fi
 
     if [ "${?}" = 0 ]; then
-        echo "Docker-образ собран без ошибок."
-        echo "Запускаем сборку пакета в самом контейнере..."
+        echo "${PREF}Docker-образ собран без ошибок."
+        echo "${PREF}Запускаем сборку пакета в самом контейнере..."
         docker exec -w "${APPS_ROOT}/${APP_NAME}/build" --user "${USER}:${GROUP}" -it "${APP_NAME}" /bin/bash "${script_to_run}"
         rm -f "${ENV_FILE}"
     else
-        show_line; echo "Docker-образ собран с ошибками!"
+        show_line; echo "${PREF}Docker-образ собран с ошибками!"
         exit 1
     fi
     show_line
@@ -288,7 +297,7 @@ image_build(){
 # Удаляем готовый образ и собираем его заново для запуска контейнера
 #----------------------------------------------------------------------------------------------------------------------
 image_rebuild(){
-    echo "Удаляем предыдущий образ ${IMAGE_NAME}"
+    echo "${PREF}Удаляем предыдущий образ ${IMAGE_NAME}"
     script_to_run=${1}
 
     container_id=$(docker ps --filter ancestor="${IMAGE_NAME}" -q)
@@ -335,13 +344,9 @@ manager_container_to_make(){
 }
 
 set_debug_status(){
-    if echo "${*}" | grep -qE '\-db|debug' ; then
-        debug=YES
-    else
-        debug=NO
-    fi
-   sed -i '' "s|DEBUG=.*$|DEBUG=${debug}|" ./scripts/package.app
-   echo "${*}" | sed "s/-v//g; s/-deb//g; s/-d//g;" | tr -d ' '
+    if echo "${*}" | grep -qE '\-db|debug' ; then debug=YES; else debug=NO; fi
+    sed -i '' "s|DEBUG=.*$|DEBUG=${debug}|" ./scripts/package.app
+    echo "${*}" | sed "s/debug//g; s/-db//g;" | tr -d ' '
 }
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -382,7 +387,7 @@ case "${args}" in
     rebuild|-rb)        create_env_file && image_rebuild "${SCRIPT_TO_MAKE}" ;;
     help|-h|--help)     show_help;;
     data_init)          ;;
-	*)                  echo -e "${RED}Не заданы аргументы запуска скрипта!${NOCL}"
+	*)                  echo -e "${RED}${PREF}Не заданы аргументы запуска скрипта!${NOCL}"
 	                    show_line
                         show_help
     ;;

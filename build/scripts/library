@@ -7,6 +7,7 @@ GREEN="\033[1;32m";
 BLUE="\033[36m";
 YELLOW="\033[33m";
 NOCL="\033[m";
+PREF='>> '
 #----------------------------------------------------------------------------------------------------------------------
 # Печатаем строку из 100  знаков равно
 #----------------------------------------------------------------------------------------------------------------------
@@ -44,9 +45,24 @@ get_config_value(){
 #----------------------------------------------------------------------------------------------------------------------
 APP_NAME=$(echo "${BASEDIR}" | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
 #----------------------------------------------------------------------------------------------------------------------
-PKGARCH=$(cat < "/apps/entware/package/utils/${APP_NAME}/Makefile" | grep -v '#' | sed -n 's/\(^.*PKGARCH:=\)\(.*\)$/\2/p' )
-APP_TAR_NAME=${APP_NAME}_${VERSION}-${STAGE}-${RELEASE}_${PKGARCH}.ipk
-APP_PKG_FILE="/apps/entware/bin/targets/mipsel-3.4/generic-glibc/packages/${APP_TAR_NAME}"
+# Получаем тип архитектуры процессора роутера
+#----------------------------------------------------------------------------------------------------------------------
+get_router_arch(){
+    cat < "/apps/entware/package/utils/${APP_NAME}/Makefile" | grep -v '#' | sed -n 's/\(^.*PKGARCH:=\)\(.*\)$/\2/p'
+}
+#----------------------------------------------------------------------------------------------------------------------
+# Получаем имя пакета для сборки
+#----------------------------------------------------------------------------------------------------------------------
+get_ipk_package_name(){
+    echo "${APP_NAME}_${VERSION}-${STAGE}-${RELEASE}_$(get_router_arch).ipk"
+}
+#----------------------------------------------------------------------------------------------------------------------
+# Получаем полный путь до пакета сборки в контейнере
+#----------------------------------------------------------------------------------------------------------------------
+get_ipk_package_file(){
+    echo "/apps/entware/bin/targets/mipsel-3.4/generic-glibc/packages/$(get_ipk_package_name)"
+}
+
 #----------------------------------------------------------------------------------------------------------------------
 # Получаем путь до ключа
 #----------------------------------------------------------------------------------------------------------------------
@@ -66,7 +82,7 @@ get_key_file(){
 #----------------------------------------------------------------------------------------------------------------------
 copy_ssh_keys_to_router(){
 	# если ключи отсутствуют на NAS
-	echo "Копируем ключи на роутер ${ROUTER} порт ${PORT}..."
+	echo "${PREF}Копируем ключи на роутер ${ROUTER} порт ${PORT}..."
 	ssh -p "${PORT}" "${ROUTER}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys"
 	show_line
 }
@@ -77,16 +93,15 @@ copy_ssh_keys_to_router(){
 #----------------------------------------------------------------------------------------------------------------------
 copy_app_to_router(){
 
-
 # 	Проверяем есть ли ключ на роутере
 	docker_key=$(cat < "$(get_key_file)")
 	ssh -p "${PORT}" "${ROUTER}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" \
 	|| copy_ssh_keys_to_router
-	echo "Загрузка пакета на роутер..."
-	echo $APP_TAR_NAME
+	echo "${PREF}Загрузка пакета на роутер..."
 	ssh -p "${PORT}" "${ROUTER}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
-	ssh -p "${PORT}" "${ROUTER}" 'rm -f '"/opt/packages/${APP_TAR_NAME}" #&> /dev/null
-	scp -P "${PORT}" "${APP_PKG_FILE}" "${ROUTER}:/opt/packages/${APP_TAR_NAME}"
+	app_tar_name=$(get_ipk_package_name)
+	ssh -p "${PORT}" "${ROUTER}" 'rm -f '"/opt/packages/${app_tar_name}" #&> /dev/null
+	scp -P "${PORT}" "$(get_ipk_package_file)" "${ROUTER}:/opt/packages/${app_tar_name}"
 }
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -95,9 +110,7 @@ copy_app_to_router(){
 #----------------------------------------------------------------------------------------------------------------------
 run_reinstalation_on_router(){
 	ssh -p "${PORT}" "${ROUTER}" 'opkg remove '"${APP_NAME}"
-	ssh -p "${PORT}" "${ROUTER}" 'opkg install /opt/packages/'"${APP_TAR_NAME}"  #<<< 2
-	show_line
-
+	ssh -p "${PORT}" "${ROUTER}" 'opkg install /opt/packages/'"$(get_ipk_package_name)"  #<<< 2
 }
 
 #========================================================================================================
@@ -134,7 +147,7 @@ get_key_file(){
 #----------------------------------------------------------------------------------------------------------------------
 copy_ssh_keys_to_router(){
 	# если ключи отсутствуют на NAS
-	echo "Копируем ключи на роутер ${ROUTER} порт ${PORT}..."
+	echo "${PREF}Копируем ключи на роутер ${ROUTER} порт ${PORT}..."
 	ssh -p "${PORT}" "${ROUTER}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys"
 	show_line
 }
@@ -149,34 +162,11 @@ copy_app_to_router(){
 	docker_key=$(cat < "$(get_key_file)")
 	ssh -p "${PORT}" "${ROUTER}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" \
 	|| copy_ssh_keys_to_router
-	echo "Загрузка пакета на роутер и его последующая установка..."
+	echo "${PREF}Загрузка пакета на роутер и его последующая установка..."
 	show_line
 	ssh -p "${PORT}" "${ROUTER}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
-	ssh -p "${PORT}" "${ROUTER}" 'rm -f '"/opt/packages/${APP_TAR_NAME}" #&> /dev/null
-	scp -P "${PORT}" "${APP_PKG_FILE}" "${ROUTER}:/opt/packages/${APP_TAR_NAME}"
-}
-
-#----------------------------------------------------------------------------------------------------------------------
-# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
-# Производим удаление и установку пакета
-#----------------------------------------------------------------------------------------------------------------------
-run_reinstalation_on_router(){
-	ssh -p "${PORT}" "${ROUTER}" 'opkg remove '"${APP_NAME}"
-	ssh -p "${PORT}" "${ROUTER}" 'opkg install /opt/packages/'"${APP_TAR_NAME}"  #<<< 2
-}
-
-#========================================================================================================
-#
-# 	Функции которая меняет крайнюю версию пакета в файлах собираемого пакета
-# 	на основе данных из файла ./version
-#
-#========================================================================================================
-change_version_in_package(){
-	sed -i "s/^\(APP_VERSION=\).*/\1${VERSION}/g" \
-		/apps/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
-	sed -i "s/^\(APP_RELEASE=\).*/\1${STAGE}-${RELEASE}/g" \
-		/apps/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
-	sed -i -e 's/\(^.*Крайняя версия Кваса.\)\[.*\]\(.*\)/\1 ['"${FULL_VERSION}"']\2/' \
-		/apps/"${APP_NAME}"/README.md
+	app_tar_name=$(get_ipk_package_name)
+	ssh -p "${PORT}" "${ROUTER}" 'rm -f '"/opt/packages/${app_tar_name}" #&> /dev/null
+	scp -P "${PORT}" "$(get_ipk_package_file)" "${ROUTER}:/opt/packages/${app_tar_name}"
 }
 
