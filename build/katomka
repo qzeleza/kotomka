@@ -98,12 +98,12 @@ set_dev_language(){
 
     case ${DEVELOP_EXT} in
         cpp|CPP|c|C)
-            cp -f "./.templates/Makefiles/Makefile.${DEVELOP_EXT}" "../code/Makefile.${DEVELOP_EXT}"
-            sed -i '' "s|@APP_NAME|${APP_NAME}|g"                  "../code/Makefile.${DEVELOP_EXT}"
-            cp -f "./.templates/sources/main.${DEVELOP_EXT}"       "../code/main.${DEVELOP_EXT}"
+            cp -f "./.templates/make/Makefile.${DEVELOP_EXT}" "../code/Makefile.${DEVELOP_EXT}"
+            sed -i '' "s|@APP_NAME|${APP_NAME}|g"             "../code/Makefile.${DEVELOP_EXT}"
+            cp -f "./.templates/codes/main.${DEVELOP_EXT}"    "../code/main.${DEVELOP_EXT}"
             ;;
         BASH|bash)
-            cp "./.templates/sources/main.sh" "../code/main.sh"
+            cp "./.templates/codes/main.sh"                  "../code/main.sh"
             ;;
         *)
             show_line
@@ -114,12 +114,12 @@ set_dev_language(){
             exit 1
             ;;
     esac
-    cp -f "./.templates/Manifests/postinst" "../make/postinst"
-    cp -f "./.templates/Manifests/postrm" "../make/postrm"
+    cp -f "./.templates/compile/postinst"                    "../compile/postinst"
+    cp -f "./.templates/compile/postrm"                      "../compile/postrm"
 
-    cp -f "./.templates/Manifests/Manifest.${DEVELOP_EXT}"      "../make/Makefile.${DEVELOP_EXT}"
-    sed -i '' "s|@APP_NAME|${APP_NAME}|g" "../make/postinst"
-    sed -i '' "s|@APP_NAME|${APP_NAME}|g" "../make/postrm"
+    cp -f "./.templates/compile/Manifest.${DEVELOP_EXT}"     "../compile/Makefile.${DEVELOP_EXT}"
+    sed -i '' "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postinst"
+    sed -i '' "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postrm"
 }
 
 
@@ -128,7 +128,7 @@ set_dev_language(){
 #----------------------------------------------------------------------------------------------------------------------
 check_dev_language(){
 
-    manifest_file=$(find .. -type f | grep "make/Makefile" | head -1)
+    manifest_file=$(find .. -type f | grep "compile/Makefile" | head -1)
 
     if [ -n "${manifest_file}" ]; then
         if ! echo "${manifest_file}" | grep -qE ".${DEVELOP_EXT}$"; then
@@ -350,8 +350,8 @@ set_debug_status(){
 show_help(){
     echo -e "${BLUE}Аргументы для запуска:${NOCL}"
     show_line
-    echo "rebuild [-rb] - Удаляем готовый образ и собираем его заново с последующим запуском сборки пакета"
     echo "build   [-bl] - сборка образа и последующий запуск сборки пакета"
+    echo "rebuild [-rb] - Удаляем готовый образ и собираем его заново с последующим запуском сборки пакета"
     echo "make    [-mk] - сборка пакета и копирование его на роутер"
     echo "copy    [-cp] - копирование уже собранного пакета на роутер"
     echo "term    [-tm] - подключение к контейнеру без исполнения скриптов под '${USER}'."
