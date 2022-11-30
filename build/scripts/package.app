@@ -63,3 +63,7 @@ copy_app_to_router "$(get_ipk_package_file)" "${app_tar_name}"
 run_reinstalation_on_router "${app_tar_name}"
 # run_tests
 echo "Сборка завершена: $(zdump EST-3)";
+
+# Запускаем тесты
+show_line
+ask_run_tests

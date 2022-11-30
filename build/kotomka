@@ -70,6 +70,7 @@ DEVELOP_EXT=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 SCRIPTS_PATH=${APPS_ROOT}/${APP_NAME}/build/scripts
 SCRIPT_TO_MAKE=${SCRIPTS_PATH}/package.app
 SCRIPT_TO_COPY=${SCRIPTS_PATH}/copy.app
+SCRIPT_TO_TEST=${SCRIPTS_PATH}/runtests.app
 
 create_env_file(){
 #----------------------------------------------------------------------------------------------------------------------
@@ -129,14 +130,9 @@ prepare_makefile(){
          s/@TITLE/$(escape "${APP_TITLE}")/g; \
          s/@SOURCE_DIR/${source_dir}/g;" "${make_file}"
 
-    awkfun -i inplace -v r="${APP_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' ${make_file}
-    awkfun -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' ${make_file}
-    awkfun -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' ${make_file}
-
-
-#    awkfun -i inplace -v r="$(escape "${APP_DESCRIPTION}")" '{gsub(/@DESCRIPTION/,r)}1' ${make_file}
-#    awkfun -i inplace -v r="$(escape "${post_inst}")" '{gsub(/@POSTINST/,r)}1' ${make_file}
-#    awkfun -i inplace -v r="$(escape "${post_term}")" '{gsub(/@POSTRM/,r)}1' ${make_file}
+    awkfun -i inplace -v r="${APP_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' "${make_file}"
+    awkfun -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' "${make_file}"
+    awkfun -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' "${make_file}"
 
     echo "${PREF}Makefile успешно создан"
 }
@@ -182,6 +178,7 @@ set_dev_language(){
     cp -f "./.templates/compile/Manifest.${DEVELOP_EXT}"     "../compile/Makefile.${DEVELOP_EXT}"
     sedi "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postinst"
     sedi "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postrm"
+    sedi "s|@APP_NAME|${APP_NAME}|g"                    "../tests/modules/hello.bats"
 
     prepare_makefile "${DEVELOP_EXT}"
 }
@@ -438,6 +435,7 @@ show_help(){
     echo "term    [-tr] - подключение к контейнеру без исполнения скриптов под пользователем '${USER}'."
     echo "root    [-rt] - подключение к контейнеру без исполнения скриптов под пользователем 'root'"
     echo "debug   [-db] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
+    echo "test    [-ts] - запуск тестов на удаленном устройстве. "
     echo "init    [-in] - cбрасываем в первоначальное состояние пакет до установки языка разработки."
     echo "help    [-hl] - отображает настоящую справку"
 
@@ -471,6 +469,7 @@ case "${args}" in
 	root|-rt) 		    manager_container_to_make "" "yes" ;;
 	make|-mk) 		    manager_container_to_make "${SCRIPT_TO_MAKE}" ;;
 	copy|-cp )  	    manager_container_to_make "${SCRIPT_TO_COPY}" ;;
+    test|-ts )  	    manager_container_to_make "${SCRIPT_TO_TEST}" ;;
     build|-bl)          create_env_file && image_build "${SCRIPT_TO_MAKE}" ;;
     rebuild|-rb)        create_env_file && image_rebuild "${SCRIPT_TO_MAKE}" ;;
     help|-h|--help)     show_help ;;
