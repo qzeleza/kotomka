@@ -14,7 +14,6 @@ services:
         GROUP: "${GROUP}"
         APPS_ROOT: "${APPS_ROOT}"
         APP_NAME: "${APP_NAME}"
-#    entrypoint: ${APPS_ROOT}/${APP_NAME}/build/scripts/firstrun.app
     volumes:
         - /Users/master/develop/apps/katomka:${APPS_ROOT}/${APP_NAME}
 

@@ -48,7 +48,7 @@ APP_NAME=$(echo "${BASEDIR}" | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d
 # Получаем тип архитектуры процессора роутера
 #----------------------------------------------------------------------------------------------------------------------
 get_router_arch(){
-    cat < "/apps/entware/package/utils/${APP_NAME}/Makefile" | grep -v '#' | sed -n 's/\(^.*PKGARCH:=\)\(.*\)$/\2/p'
+    cat < "${APPS_ROOT}/entware/package/utils/${APP_NAME}/Makefile" | grep -v '#' | sed -n 's/\(^.*PKGARCH:=\)\(.*\)$/\2/p'
 }
 #----------------------------------------------------------------------------------------------------------------------
 # Получаем имя пакета для сборки
@@ -60,7 +60,7 @@ get_ipk_package_name(){
 # Получаем полный путь до пакета сборки в контейнере
 #----------------------------------------------------------------------------------------------------------------------
 get_ipk_package_file(){
-    echo "/apps/entware/bin/targets/mipsel-3.4/generic-glibc/packages/$(get_ipk_package_name)"
+    echo "${APPS_ROOT}/entware/bin/targets/mipsel-3.4/generic-glibc/packages/$(get_ipk_package_name)"
 }
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -121,11 +121,11 @@ run_reinstalation_on_router(){
 #========================================================================================================
 change_version_in_package(){
 	sed -i "s/^\(APP_VERSION=\).*/\1${VERSION}/g" \
-		/apps/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
+		"${APPS_ROOT}"/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
 	sed -i "s/^\(APP_RELEASE=\).*/\1${STAGE}-${RELEASE}/g" \
-		/apps/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
+		"${APPS_ROOT}"/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
 	sed -i -e 's/\(^.*Крайняя версия Кваса.\)\[.*\]\(.*\)/\1 ['"${FULL_VERSION}"']\2/' \
-		/apps/"${APP_NAME}"/README.md
+		"${APPS_ROOT}"/"${APP_NAME}"/README.md
 }
 
 #----------------------------------------------------------------------------------------------------------------------

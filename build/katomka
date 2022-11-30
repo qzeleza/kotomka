@@ -5,6 +5,8 @@ RED="\033[1;31m";
 BLUE="\033[36m";
 NOCL="\033[m";
 PREF='>> '
+AWK=''
+SEDI=''
 #----------------------------------------------------------------------------------------------------------------------
 # Печатаем строку из 100  знаков равно
 #----------------------------------------------------------------------------------------------------------------------
@@ -29,7 +31,6 @@ show_line(){
 #----------------------------------------------------------------------------------------------------------------------
 get_version_part(){
 	value=${1}
-	echo "$(pwd)/version"
 	cat < "$(pwd)/version" | grep "${value}" | cut -d'=' -f2
 }
 
@@ -65,12 +66,6 @@ DEVELOP_EXT=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 SCRIPTS_PATH=${APPS_ROOT}/${APP_NAME}/build/scripts
 SCRIPT_TO_MAKE=${SCRIPTS_PATH}/package.app
 SCRIPT_TO_COPY=${SCRIPTS_PATH}/copy.app
-
-#----------------------------------------------------------------------------------------------------------------------
-#	Пути к файлам на машине разработчика относительно папки запуска катомки ./build
-#----------------------------------------------------------------------------------------------------------------------
-EXTENSION=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
-
 
 create_env_file(){
 #----------------------------------------------------------------------------------------------------------------------
@@ -111,11 +106,10 @@ prepare_makefile(){
     post_term=$(cat < "${POSTRM_FILE}")
     source_dir="\\${APPS_ROOT}\/${APP_NAME}"
 
-    app_make_build_path=${APPS_ROOT}/entware/package/utils/${APP_NAME}
     make_file="../compile/Makefile.${extension}"
 
 
-    sed -e "s/@APP_NAME/${APP_NAME}/g;
+    ${SEDI} -e "s/@APP_NAME/${APP_NAME}/g;
     s/@VERSION/${VERSION}/g;
     s/@APP_ROUTER_DIR/${app_router_dir}/g;
     s/@STAGE/${STAGE}/g;
@@ -128,11 +122,11 @@ prepare_makefile(){
     s/@SUBMENU/${APP_SUBMENU}/g;
     s/@TITLE/${APP_TITLE}/g;
     s/@DEPENDS/${APP_DEPENDS}/g;
-    s/@SOURCE_DIR/${source_dir}/g;" "${make_file}" > "${app_make_build_path}/Makefile"
+    s/@SOURCE_DIR/${source_dir}/g;" "${make_file}"
 
-    awk -i inplace -v r="${APP_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' "${app_make_build_path}/Makefile"
-    awk -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' "${app_make_build_path}/Makefile"
-    awk -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' "${app_make_build_path}/Makefile"
+    ${AWK} -i inplace "-v r='${APP_DESCRIPTION}' {gsub(/@DESCRIPTION/,r)}1" "${make_file}"
+    ${AWK} -i inplace "-v r='${post_inst}' {gsub(/@POSTINST/,r)}1" "${make_file}"
+    ${AWK} -i inplace "-v r='${post_term}' {gsub(/@POSTRM/,r)}1" "${make_file}"
 
     echo "${PREF}Makefile успешно создан"
 }
@@ -151,12 +145,13 @@ set_dev_language(){
     echo -e "${BLUE}${PREF}Заявленным языком разработки является '${lang}'${NOCL}"
     echo -e "${BLUE}${PREF}Производим замену файлов в соответствии с установками в ./build/CONFIG ${NOCL}"
     show_line
-    rm -f ../code/Makefile.* ../code/main.* ../compile/Makefile*
+
+    rm -f ../code/Makefile.* ../code/main.* ../compile/Makefile* ../code/"${APP_NAME}"
 
     case ${DEVELOP_EXT} in
         cpp|CPP|c|C)
             cp -f "./.templates/make/Makefile.${DEVELOP_EXT}" "../code/Makefile"
-            sed -i '' "s|@APP_NAME|${APP_NAME}|g"             "../code/Makefile"
+            ${SEDI}  "s|@APP_NAME|${APP_NAME}|g"             "../code/Makefile"
             cp -f "./.templates/code/main.${DEVELOP_EXT}"     "../code/main.${DEVELOP_EXT}"
             ;;
         BASH|bash)
@@ -175,8 +170,8 @@ set_dev_language(){
     cp -f "./.templates/compile/postrm"                      "../compile/postrm"
 
     cp -f "./.templates/compile/Manifest.${DEVELOP_EXT}"     "../compile/Makefile.${DEVELOP_EXT}"
-    sed -i '' "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postinst"
-    sed -i '' "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postrm"
+    ${SEDI} "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postinst"
+    ${SEDI} "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postrm"
 
     prepare_makefile "${DEVELOP_EXT}"
 }
@@ -198,6 +193,28 @@ check_dev_language(){
     else
         set_dev_language
     fi
+}
+
+#----------------------------------------------------------------------------------------------------------------------
+#  Готовим систему к запуску пакета
+#----------------------------------------------------------------------------------------------------------------------
+check_system(){
+
+#    Если система MAC OS X
+    if uname -a | grep -q Darwin; then
+        if ! [ -f /usr/local/bin/gawk ] ; then
+            echo -e "${BLUE}${PREF}Производим установку недостающего пакета gawk для Mac OS X${NOCL}"
+            show_line
+            brew install gawk
+        fi
+        AWK='gawk'
+        SEDI='sed -i ""'
+#   Если система Linux
+    else
+        AWK='awk'
+        SEDI='sed -i'
+    fi
+
 }
 
 
@@ -318,13 +335,11 @@ image_build(){
     if ! docker ps | grep -q "${APP_NAME}" ; then
     #	то заходим внутрь контейнера и сразу запускаем сборку пакета
     #	если не создан образ, то запускаем сборку образа
-        echo -e "${RED}${PREF}Cборка образа может занять до 3 минут.${NOCL}"
         echo "${PREF}Запускаем сборку НОВОГО образа ${IMAGE_NAME}"
         show_line
         dev_path=$(dirname "$(pwd)")
-        sed -i '' "s|.*-.*:.*{APPS_ROOT}.*{APP_NAME}|        - ${dev_path//\//\\/}:\${APPS_ROOT}\/\${APP_NAME}|g; \
-            s|dockerfile:.*$|dockerfile: ${DOCKER_FILE}|" \
-            "${DOCKER_COMP_FILE}"
+        ${SEDI} "s|.*-.*:.*{APPS_ROOT}.*{APP_NAME}|        - ${dev_path//\//\\/}:\${APPS_ROOT}\/\${APP_NAME}|g; \
+            s|dockerfile:.*$|dockerfile: ${DOCKER_FILE}|" "${DOCKER_COMP_FILE}"
         docker-compose -f "${DOCKER_COMP_FILE}" up --build -d
         show_line
     fi
@@ -346,6 +361,7 @@ image_build(){
 # Удаляем готовый образ и собираем его заново для запуска контейнера
 #----------------------------------------------------------------------------------------------------------------------
 image_rebuild(){
+
     echo "${PREF}Удаляем предыдущий образ ${IMAGE_NAME}"
     script_to_run=${1}
 
@@ -394,7 +410,7 @@ manager_container_to_make(){
 
 set_debug_status(){
     if echo "${*}" | grep -qE '\-db|debug' ; then debug=YES; else debug=NO; fi
-    sed -i '' "s|DEBUG=.*$|DEBUG=${debug}|" ./scripts/package.app
+    ${SEDI} "s|DEBUG=.*$|DEBUG=${debug}|" ./scripts/package.app
     echo "${*}" | sed "s/debug//g; s/-db//g;" | tr -d ' '
 }
 
@@ -427,9 +443,16 @@ show_help(){
 show_line
 args="$(set_debug_status "${*}")"
 
+set -x
 #   Сбрасываем в первоначальное состояние пакет до установки языка разработки
-if [[ "${args}" =~ init|-in ]] ; then reset_data; exit 0; else check_dev_language ; fi
-
+if [[ "${args}" =~ init|-in ]] ; then
+    reset_data;
+    exit 0;
+else
+    [[ "${args}" =~ rebuild|-rb ]] && reset_data
+    check_dev_language ;
+fi
+exit
 case "${args}" in
 	term|-tr )   	    manager_container_to_make "" ;;
 	root|-rt) 		    manager_container_to_make "" "yes" ;;

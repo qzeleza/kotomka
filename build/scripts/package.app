@@ -1,8 +1,9 @@
 #! /usr/bin/env bash
 PREF='>> '
 set -e
+
 BASEDIR=$(dirname "$(dirname "${0}")")
-. "${BASEDIR}/scripts/library" "${BASEDIR}"
+. "${BASEDIR}/scripts/library"
 DEBUG=NO
 
 if echo "${DEBUG}" | grep -qE 'YES|yes'; then
@@ -18,18 +19,23 @@ fi
 # Производим первую сборку toolchain в контейнере
 # В случае необходимости устанавливаем флаг отладки в YES
 #----------------------------------------------------------------------------------------------------------------------
+extension=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
+app_make_build_path=${APPS_ROOT}/entware/package/utils/${APP_NAME}
+make_file="${APPS_ROOT}/${APP_NAME}/compile/Makefile.${extension}"
+cp "${make_file}" "${app_make_build_path}/Makefile"
 
 show_line
 echo "${PREF}Задействовано ${np} яд. процессора."
 echo "${PREF}Опции отладки: DEBUG = ${DEBUG}, ${deb}"
+echo "${PREF}Makefile успешно импортирован."
 echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
 show_line
 echo "${PREF}Сборка запущена: $(zdump EST-3)"; show_line
 
 rm -f "$(get_ipk_package_file)"
-cd /apps/entware/
+cd "${APPS_ROOT}/entware/"
 
-if ! grep -q "${APP_NAME}" /apps/entware/.config ; then
+if ! grep -q "${APP_NAME}" "${APPS_ROOT}/entware/.config" ; then
 
 	make oldconfig <<< m
 	make tools/install "${deb}"
@@ -44,8 +50,8 @@ make package/"${APP_NAME}"/{clean,compile} ${deb}
 #change_version_in_package
 
 # копируем собранный пакет в папку где хранятся все сборки
-[ -d "/apps/${APP_NAME}/ipk" ] || mkdir -p "/apps/${APP_NAME}/ipk"
-cp "$(get_ipk_package_file)" "/apps/${APP_NAME}/ipk"
+[ -d "${APPS_ROOT}/${APP_NAME}/ipk" ] || mkdir -p "${APPS_ROOT}/${APP_NAME}/ipk"
+cp "$(get_ipk_package_file)" "${APPS_ROOT}/${APP_NAME}/ipk"
 
 show_line
 app_tar_name=$(get_ipk_package_file)
