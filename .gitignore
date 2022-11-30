@@ -57,6 +57,6 @@ debug/
 backup/
 tests/
 
-!code/*
-!compile/*
-!tests/*
+!code/
+!compile/
+!tests/

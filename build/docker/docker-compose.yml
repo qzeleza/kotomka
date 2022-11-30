@@ -6,7 +6,7 @@ services:
     container_name: "${CONTAINER_NAME}"
     build:
       context: ../..
-      dockerfile: /Users/master/develop/apps/katomka/build/docker/Dockerfile
+      dockerfile: /Users/master/develop/apps/kotomka/build/docker/Dockerfile
       args:
         UID: "${UID}"
         GID: "${GID}"
@@ -15,7 +15,7 @@ services:
         APPS_ROOT: "${APPS_ROOT}"
         APP_NAME: "${APP_NAME}"
     volumes:
-        - /Users/master/develop/apps/katomka:${APPS_ROOT}/${APP_NAME}
+        - /Users/master/develop/apps/kotomka:${APPS_ROOT}/${APP_NAME}
 
     restart: "unless-stopped"
     stdin_open: true # docker run -i

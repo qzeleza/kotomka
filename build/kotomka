@@ -5,14 +5,18 @@ RED="\033[1;31m";
 BLUE="\033[36m";
 NOCL="\033[m";
 PREF='>> '
-AWK=''
-SEDI=''
+
+is_mac_os_x()(uname -a | grep -q Darwin)
+awkfun()(is_mac_os_x && gawk "$@" || awk "$@")
+sedi()(is_mac_os_x && sed -i '' "$@" || sed -i "$@")
+escape()(echo "${1}" | sed 's|\/|\\/|g')
+
 #----------------------------------------------------------------------------------------------------------------------
 # Печатаем строку из 100  знаков равно
 #----------------------------------------------------------------------------------------------------------------------
 show_line(){
     if [ -z "${1}" ] ; then div='=' ; else div=${1} ; fi
-    printf "%100s\n" | tr " " "${div}"
+    printf "%100s\n" ' ' | tr " " "${div}"
 }
 
 
@@ -93,6 +97,9 @@ reset_data(){
     show_line
 }
 
+
+
+
 #----------------------------------------------------------------------------------------------------------------------
 #  Создаем файл манифеста для заданного типа языка разработки
 #----------------------------------------------------------------------------------------------------------------------
@@ -100,33 +107,36 @@ prepare_makefile(){
 
     extension=${1}
 
-    app_router_dir="\/opt\\${APPS_ROOT}\/${APP_NAME}"
-    github_url="https:\/\/github.com\/${GITHUB_ACCOUNT_NAME}\/${APP_NAME}"
+    app_router_dir=$(escape "/opt${APPS_ROOT}/${APP_NAME}")
+    github_url=$(escape "https://github.com/${GITHUB_ACCOUNT_NAME}/${APP_NAME}")
     post_inst=$(cat < "${POSTINST_FILE}")
     post_term=$(cat < "${POSTRM_FILE}")
-    source_dir="\\${APPS_ROOT}\/${APP_NAME}"
+    source_dir=$(escape "${APPS_ROOT}/${APP_NAME}")
 
     make_file="../compile/Makefile.${extension}"
 
+    sedi "${SEP}" "s/@APP_NAME/$(escape "${APP_NAME}")/g; \
+         s/@VERSION/$(escape "${VERSION}")/g; \
+         s/@APP_ROUTER_DIR/${app_router_dir}/g; \
+         s/@STAGE/$(escape "${STAGE}")/g; \
+         s/@RELEASE/$(escape "${RELEASE}")/g; \
+         s/@LICENCE/$(escape "${LICENCE}")/g; \
+         s/@AUTHOR/$(escape "${AUTHOR_NAME}")/g; \
+         s/@EMAIL/$(escape "${AUTHOR_EMAIL}")/g; \
+         s/@GITHUB/${github_url}/g; \
+         s/@CATEGORY/$(escape "${APP_CATEGORY}")/g; \
+         s/@SUBMENU/$(escape "${APP_SUBMENU}")/g; \
+         s/@TITLE/$(escape "${APP_TITLE}")/g; \
+         s/@SOURCE_DIR/${source_dir}/g;" "${make_file}"
 
-    ${SEDI} -e "s/@APP_NAME/${APP_NAME}/g;
-    s/@VERSION/${VERSION}/g;
-    s/@APP_ROUTER_DIR/${app_router_dir}/g;
-    s/@STAGE/${STAGE}/g;
-    s/@RELEASE/${RELEASE}/g;
-    s/@LICENCE/${LICENCE}/g;
-    s/@AUTHOR/${AUTHOR_NAME}/g;
-    s/@EMAIL/${AUTHOR_EMAIL}/g;
-    s/@GITHUB/${github_url}/g;
-    s/@CATEGORY/${APP_CATEGORY}/g;
-    s/@SUBMENU/${APP_SUBMENU}/g;
-    s/@TITLE/${APP_TITLE}/g;
-    s/@DEPENDS/${APP_DEPENDS}/g;
-    s/@SOURCE_DIR/${source_dir}/g;" "${make_file}"
+    awkfun -i inplace -v r="${APP_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' ${make_file}
+    awkfun -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' ${make_file}
+    awkfun -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' ${make_file}
 
-    ${AWK} -i inplace "-v r='${APP_DESCRIPTION}' {gsub(/@DESCRIPTION/,r)}1" "${make_file}"
-    ${AWK} -i inplace "-v r='${post_inst}' {gsub(/@POSTINST/,r)}1" "${make_file}"
-    ${AWK} -i inplace "-v r='${post_term}' {gsub(/@POSTRM/,r)}1" "${make_file}"
+
+#    awkfun -i inplace -v r="$(escape "${APP_DESCRIPTION}")" '{gsub(/@DESCRIPTION/,r)}1' ${make_file}
+#    awkfun -i inplace -v r="$(escape "${post_inst}")" '{gsub(/@POSTINST/,r)}1' ${make_file}
+#    awkfun -i inplace -v r="$(escape "${post_term}")" '{gsub(/@POSTRM/,r)}1' ${make_file}
 
     echo "${PREF}Makefile успешно создан"
 }
@@ -151,7 +161,7 @@ set_dev_language(){
     case ${DEVELOP_EXT} in
         cpp|CPP|c|C)
             cp -f "./.templates/make/Makefile.${DEVELOP_EXT}" "../code/Makefile"
-            ${SEDI}  "s|@APP_NAME|${APP_NAME}|g"             "../code/Makefile"
+            sedi  "s|@APP_NAME|${APP_NAME}|g"             "../code/Makefile"
             cp -f "./.templates/code/main.${DEVELOP_EXT}"     "../code/main.${DEVELOP_EXT}"
             ;;
         BASH|bash)
@@ -170,8 +180,8 @@ set_dev_language(){
     cp -f "./.templates/compile/postrm"                      "../compile/postrm"
 
     cp -f "./.templates/compile/Manifest.${DEVELOP_EXT}"     "../compile/Makefile.${DEVELOP_EXT}"
-    ${SEDI} "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postinst"
-    ${SEDI} "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postrm"
+    sedi "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postinst"
+    sedi "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postrm"
 
     prepare_makefile "${DEVELOP_EXT}"
 }
@@ -195,24 +205,20 @@ check_dev_language(){
     fi
 }
 
+
 #----------------------------------------------------------------------------------------------------------------------
 #  Готовим систему к запуску пакета
 #----------------------------------------------------------------------------------------------------------------------
 check_system(){
 
 #    Если система MAC OS X
-    if uname -a | grep -q Darwin; then
+    if is_mac_os_x; then
         if ! [ -f /usr/local/bin/gawk ] ; then
-            echo -e "${BLUE}${PREF}Производим установку недостающего пакета gawk для Mac OS X${NOCL}"
+            echo -e "${BLUE}${PREF}Производим установку недостающего пакета 'gawk' для 'Mac OS X'${NOCL}"
             show_line
             brew install gawk
         fi
-        AWK='gawk'
-        SEDI='sed -i ""'
 #   Если система Linux
-    else
-        AWK='awk'
-        SEDI='sed -i'
     fi
 
 }
@@ -247,7 +253,7 @@ connect_when_run(){
    	docker_id=${3}
    	_user=${4}
 
-   	echo "${_user}::Контейнер разработки ${CONTAINER_NAME} запущен."
+   	echo "${_user}::Контейнер разработки '${CONTAINER_NAME}' запущен."
     echo "${_user}::Производим подключение к контейнеру id = ${docker_id}."
     if [ -n "${script_to_run}" ] ; then
         docker exec -w "${APPS_ROOT}/${APP_NAME}/build" -it "${docker_id}" /bin/bash "${script_to_run}"
@@ -297,7 +303,7 @@ connect_when_not_mounted(){
     run_with_root=${2}
     _user=${3}
 
-    echo "${_user}::Контейнер ${CONTAINER_NAME} не смонтирован!"
+    echo "${_user}::Контейнер '${CONTAINER_NAME}' не смонтирован!"
     #	Если контейнер запущен или просто собран - удаляем его (так, как там могут быть ошибки)
     container_id="$(get_container_id)"
     [ -n "${container_id}" ] && purge_running_container "${container_id}" &> /dev/null
@@ -338,7 +344,7 @@ image_build(){
         echo "${PREF}Запускаем сборку НОВОГО образа ${IMAGE_NAME}"
         show_line
         dev_path=$(dirname "$(pwd)")
-        ${SEDI} "s|.*-.*:.*{APPS_ROOT}.*{APP_NAME}|        - ${dev_path//\//\\/}:\${APPS_ROOT}\/\${APP_NAME}|g; \
+        sedi "s|.*-.*:.*{APPS_ROOT}.*{APP_NAME}|        - ${dev_path//\//\\/}:\${APPS_ROOT}\/\${APP_NAME}|g; \
             s|dockerfile:.*$|dockerfile: ${DOCKER_FILE}|" "${DOCKER_COMP_FILE}"
         docker-compose -f "${DOCKER_COMP_FILE}" up --build -d
         show_line
@@ -362,7 +368,7 @@ image_build(){
 #----------------------------------------------------------------------------------------------------------------------
 image_rebuild(){
 
-    echo "${PREF}Удаляем предыдущий образ ${IMAGE_NAME}"
+    echo "${PREF}Удаляем предыдущий образ '${IMAGE_NAME}'"
     script_to_run=${1}
 
     container_id=$(docker ps --filter ancestor="${IMAGE_NAME}" -q)
@@ -410,7 +416,7 @@ manager_container_to_make(){
 
 set_debug_status(){
     if echo "${*}" | grep -qE '\-db|debug' ; then debug=YES; else debug=NO; fi
-    ${SEDI} "s|DEBUG=.*$|DEBUG=${debug}|" ./scripts/package.app
+    sedi "s|DEBUG=.*$|DEBUG=${debug}|" ./scripts/package.app
     echo "${*}" | sed "s/debug//g; s/-db//g;" | tr -d ' '
 }
 
@@ -418,32 +424,37 @@ set_debug_status(){
 # Удаляем готовый образ и собираем его заново для запуска контейнера
 #----------------------------------------------------------------------------------------------------------------------
 show_help(){
-    echo -e "${BLUE}Аргументы для запуска:${NOCL}"
+    show_line
+    echo -e "${BLUE}Котомка [kotomka] - скрипт предназначенный для быстрого развертывания среды разработки Entware"
+    echo -e "в Docker-контейнере для роутеров Keenetic с целью сборки пакетов на языках семейства Bash, С, С++.${NOCL}"
+    show_line
+    echo -e "${BLUE}Допустимые аргументы:${NOCL}"
     show_line
     echo "build   [-bl] - сборка образа и последующий запуск сборки пакета"
     echo "rebuild [-rb] - Удаляем готовый образ и собираем его заново с последующим запуском сборки пакета"
     echo "make    [-mk] - сборка пакета и копирование его на роутер"
     echo "copy    [-cp] - копирование уже собранного пакета на роутер"
-    echo "term    [-tr] - подключение к контейнеру без исполнения скриптов под '${USER}'."
-    echo "root    [-rt] - подключение к контейнеру без исполнения скриптов под root"
+    echo "term    [-tr] - подключение к контейнеру без исполнения скриптов под пользователем '${USER}'."
+    echo "root    [-rt] - подключение к контейнеру без исполнения скриптов под пользователем 'root'"
     echo "debug   [-db] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
-    echo "init    [-in] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
+    echo "init    [-in] - cбрасываем в первоначальное состояние пакет до установки языка разработки."
     echo "help    [-hl] - отображает настоящую справку"
 
     show_line "-"
     echo -e "Примеры запуска:"
     show_line "-"
-    echo  " ./run.me build      - запускаем сборку среды разработки и первоначальную сборку пакета."
-    echo  " ./run.me -mk -db    - запускаем сборку пакета с опцией отладки."
-    echo  " ./run.me -cp        - копируем уже ранее собранный пакет на удаленное устройство (роутер)."
-    echo  " ./run.me term       - заходим в ранее собранный контейнер под именем разработчика."
+    echo  " ./kotomka build      - запускаем сборку среды разработки и первоначальную сборку пакета."
+    echo  " ./kotomka -mk -db    - запускаем сборку пакета с опцией отладки."
+    echo  " ./kotomka -cp        - копируем уже ранее собранный пакет на удаленное устройство (роутер)."
+    echo  " ./kotomka term       - заходим в ранее собранный контейнер под именем разработчика."
     show_line
 }
-
+set -x
 show_line
+check_system
+
 args="$(set_debug_status "${*}")"
 
-set -x
 #   Сбрасываем в первоначальное состояние пакет до установки языка разработки
 if [[ "${args}" =~ init|-in ]] ; then
     reset_data;
@@ -452,19 +463,19 @@ else
     [[ "${args}" =~ rebuild|-rb ]] && reset_data
     check_dev_language ;
 fi
-exit
+
 case "${args}" in
+
 	term|-tr )   	    manager_container_to_make "" ;;
 	root|-rt) 		    manager_container_to_make "" "yes" ;;
 	make|-mk) 		    manager_container_to_make "${SCRIPT_TO_MAKE}" ;;
 	copy|-cp )  	    manager_container_to_make "${SCRIPT_TO_COPY}" ;;
     build|-bl)          create_env_file && image_build "${SCRIPT_TO_MAKE}" ;;
     rebuild|-rb)        create_env_file && image_rebuild "${SCRIPT_TO_MAKE}" ;;
-    help|-h|--help)     show_help;;
-	*)                  echo -e "${RED}${PREF}Не заданы аргументы запуска скрипта!${NOCL}"
+    help|-h|--help)     show_help ;;
+	*)                  echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}"
 	                    show_line
-                        show_help
-    ;;
+                        show_help ;;
 esac
 
 
