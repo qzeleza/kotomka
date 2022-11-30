@@ -47,6 +47,7 @@ APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
 IMAGE_NAME=$(echo "${DOCKER_ACCOUNT_NAME}" | tr "[:upper:]" "[:lower:]")/${APP_NAME}-dev
 CONTAINER_NAME=${APP_NAME}
 
+
 #----------------------------------------------------------------------------------------------------------------------
 #	Пути к файлам на машине разработчика
 #----------------------------------------------------------------------------------------------------------------------
@@ -54,6 +55,8 @@ DOCKER_FILES_PATH=$(pwd)/docker
 ENV_FILE=${DOCKER_FILES_PATH}/.env
 DOCKER_COMP_FILE=${DOCKER_FILES_PATH}/docker-compose.yml
 DOCKER_FILE=${DOCKER_FILES_PATH}/Dockerfile
+POSTINST_FILE="../compile/postinst"
+POSTRM_FILE="../compile/postrm"
 DEVELOP_EXT=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -62,6 +65,12 @@ DEVELOP_EXT=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 SCRIPTS_PATH=${APPS_ROOT}/${APP_NAME}/build/scripts
 SCRIPT_TO_MAKE=${SCRIPTS_PATH}/package.app
 SCRIPT_TO_COPY=${SCRIPTS_PATH}/copy.app
+
+#----------------------------------------------------------------------------------------------------------------------
+#	Пути к файлам на машине разработчика относительно папки запуска катомки ./build
+#----------------------------------------------------------------------------------------------------------------------
+EXTENSION=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
+
 
 create_env_file(){
 #----------------------------------------------------------------------------------------------------------------------
@@ -89,6 +98,44 @@ reset_data(){
     show_line
 }
 
+#----------------------------------------------------------------------------------------------------------------------
+#  Создаем файл манифеста для заданного типа языка разработки
+#----------------------------------------------------------------------------------------------------------------------
+prepare_makefile(){
+
+    extension=${1}
+
+    app_router_dir="\/opt\\${APPS_ROOT}\/${APP_NAME}"
+    github_url="https:\/\/github.com\/${GITHUB_ACCOUNT_NAME}\/${APP_NAME}"
+    post_inst=$(cat < "${POSTINST_FILE}")
+    post_term=$(cat < "${POSTRM_FILE}")
+    source_dir="\\${APPS_ROOT}\/${APP_NAME}"
+
+    app_make_build_path=${APPS_ROOT}/entware/package/utils/${APP_NAME}
+    make_file="../compile/Makefile.${extension}"
+
+
+    sed -e "s/@APP_NAME/${APP_NAME}/g;
+    s/@VERSION/${VERSION}/g;
+    s/@APP_ROUTER_DIR/${app_router_dir}/g;
+    s/@STAGE/${STAGE}/g;
+    s/@RELEASE/${RELEASE}/g;
+    s/@LICENCE/${LICENCE}/g;
+    s/@AUTHOR/${AUTHOR_NAME}/g;
+    s/@EMAIL/${AUTHOR_EMAIL}/g;
+    s/@GITHUB/${github_url}/g;
+    s/@CATEGORY/${APP_CATEGORY}/g;
+    s/@SUBMENU/${APP_SUBMENU}/g;
+    s/@TITLE/${APP_TITLE}/g;
+    s/@DEPENDS/${APP_DEPENDS}/g;
+    s/@SOURCE_DIR/${source_dir}/g;" "${make_file}" > "${app_make_build_path}/Makefile"
+
+    awk -i inplace -v r="${APP_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' "${app_make_build_path}/Makefile"
+    awk -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' "${app_make_build_path}/Makefile"
+    awk -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' "${app_make_build_path}/Makefile"
+
+    echo "${PREF}Makefile успешно создан"
+}
 
 #----------------------------------------------------------------------------------------------------------------------
 #  Производим первоначальные настройки пакета в зависимости от заявленного языка разработки
@@ -130,6 +177,8 @@ set_dev_language(){
     cp -f "./.templates/compile/Manifest.${DEVELOP_EXT}"     "../compile/Makefile.${DEVELOP_EXT}"
     sed -i '' "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postinst"
     sed -i '' "s|@APP_NAME|${APP_NAME}|g"                    "../compile/postrm"
+
+    prepare_makefile "${DEVELOP_EXT}"
 }
 
 

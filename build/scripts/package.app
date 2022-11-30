@@ -1,5 +1,5 @@
 #! /usr/bin/env bash
-
+PREF='>> '
 set -e
 BASEDIR=$(dirname "$(dirname "${0}")")
 . "${BASEDIR}/scripts/library" "${BASEDIR}"
@@ -12,7 +12,7 @@ else
     deb="-j$(nproc)";
     np="$(nproc)";
 fi
-PREF='>> '
+
 #----------------------------------------------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим первую сборку toolchain в контейнере
@@ -22,7 +22,6 @@ PREF='>> '
 show_line
 echo "${PREF}Задействовано ${np} яд. процессора."
 echo "${PREF}Опции отладки: DEBUG = ${DEBUG}, ${deb}"
-/apps/"${APP_NAME}"/build/scripts/Makefile.app
 echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
 show_line
 echo "${PREF}Сборка запущена: $(zdump EST-3)"; show_line
@@ -33,7 +32,6 @@ cd /apps/entware/
 if ! grep -q "${APP_NAME}" /apps/entware/.config ; then
 
 	make oldconfig <<< m
-	#sed -i 's/^\(CONFIG_PACKAGE_plato=\)\(.*$\)/\1m/' /apps/entware/.config
 	make tools/install "${deb}"
 	make toolchain/install "${deb}"
 fi
