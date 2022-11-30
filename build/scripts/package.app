@@ -19,9 +19,12 @@ fi
 # Производим первую сборку toolchain в контейнере
 # В случае необходимости устанавливаем флаг отладки в YES
 #----------------------------------------------------------------------------------------------------------------------
+APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
 extension=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 app_make_build_path=${APPS_ROOT}/entware/package/utils/${APP_NAME}
 make_file="${APPS_ROOT}/${APP_NAME}/compile/Makefile.${extension}"
+
+cp -rf "${APPS_ROOT}/${APP_NAME}/code/." "${app_make_build_path}/files"
 cp "${make_file}" "${app_make_build_path}/Makefile"
 
 show_line
@@ -38,8 +41,8 @@ cd "${APPS_ROOT}/entware/"
 if ! grep -q "${APP_NAME}" "${APPS_ROOT}/entware/.config" ; then
 
 	make oldconfig <<< m
-	make tools/install "${deb}"
-	make toolchain/install "${deb}"
+	make tools/install ${deb}
+	make toolchain/install ${deb}
 fi
 
 [[ "${*}" =~ menu|-mc ]] && make menuconfig

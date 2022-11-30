@@ -5,7 +5,7 @@ RED="\033[1;31m";
 BLUE="\033[36m";
 NOCL="\033[m";
 PREF='>> '
-
+SEP=
 is_mac_os_x()(uname -a | grep -q Darwin)
 awkfun()(is_mac_os_x && gawk "$@" || awk "$@")
 sedi()(is_mac_os_x && sed -i '' "$@" || sed -i "$@")
@@ -115,7 +115,7 @@ prepare_makefile(){
 
     make_file="../compile/Makefile.${extension}"
 
-    sedi "${SEP}" "s/@APP_NAME/$(escape "${APP_NAME}")/g; \
+    sed -i "${SEP}" "s/@APP_NAME/$(escape "${APP_NAME}")/g; \
          s/@VERSION/$(escape "${VERSION}")/g; \
          s/@APP_ROUTER_DIR/${app_router_dir}/g; \
          s/@STAGE/$(escape "${STAGE}")/g; \
@@ -218,6 +218,7 @@ check_system(){
             show_line
             brew install gawk
         fi
+        SEP=''
 #   Если система Linux
     fi
 
@@ -449,7 +450,7 @@ show_help(){
     echo  " ./kotomka term       - заходим в ранее собранный контейнер под именем разработчика."
     show_line
 }
-set -x
+
 show_line
 check_system
 

@@ -30,6 +30,9 @@ RUN rm -rf /var/lib/apt/lists/* \
     && mv Entware/ entware/ && cd ${APPS_ROOT}/entware  \
     && make package/symlinks  \
     && cp `ls ${APPS_ROOT}/entware/configs/mipsel-*` .config \
+    && cd /usr/local/src/ \
+    && git clone https://github.com/sstephenson/bats.git \
+    && cd bats && ./install.sh /usr/local \
     && mkdir -p ${APPS_ROOT}/entware/package/utils/${APP_NAME}/files ${APPS_ROOT}/${APP_NAME}
 
 RUN chown -R ${USER}:${GROUP} ${APPS_ROOT}/entware ${APPS_ROOT}/${APP_NAME}

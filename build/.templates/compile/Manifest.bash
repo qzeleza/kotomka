@@ -17,7 +17,7 @@ define Package/@APP_NAME
 	TITLE:=@TITLE
 	SECTION:=utils
 	URL:=@GITHUB
-	DEPENDS:=@DEPENDS
+	DEPENDS:=
 	PKGARCH:=all
 endef
 
