@@ -43,6 +43,21 @@ save_post_blocks(){
     cp "${make_file}" "${APP_MAKE_BUILD_PATH}/Makefile"
 }
 
+do_package_make(){
+    deb=${1}
+    #rm -f "$(get_ipk_package_file)"
+    cd "${APPS_ROOT}/entware/"
+
+    if ! grep -q "${APP_NAME}" "${APPS_ROOT}/entware/.config" ; then
+
+    	make oldconfig <<< m
+    	make tools/install ${deb}
+    	make toolchain/install ${deb}
+    fi
+
+    [[ "${*}" =~ menu|-mc ]] && make menuconfig
+    make package/"${APP_NAME}"/{clean,compile} ${deb}
+}
 #----------------------------------------------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим первую сборку toolchain в контейнере
@@ -54,8 +69,6 @@ save_post_blocks(){
 cp -rf "${APPS_ROOT}/${APP_NAME}/code/." "${APP_MAKE_BUILD_PATH}/files"
 save_post_blocks
 
-cat ${APPS_ROOT}/${APP_NAME}/compile/Makefile.cpp
-exit
 show_line
 echo "${PREF}Задействовано ${np} яд. процессора."
 echo "${PREF}Опции отладки: DEBUG = ${DEBUG}, ${deb}"
@@ -64,18 +77,7 @@ echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
 show_line
 echo "${PREF}Сборка запущена: $(zdump EST-3)"; show_line
 
-rm -f "$(get_ipk_package_file)"
-cd "${APPS_ROOT}/entware/"
 
-if ! grep -q "${APP_NAME}" "${APPS_ROOT}/entware/.config" ; then
-
-	make oldconfig <<< m
-	make tools/install ${deb}
-	make toolchain/install ${deb}
-fi
-
-[[ "${*}" =~ menu|-mc ]] && make menuconfig
-make package/"${APP_NAME}"/{clean,compile} ${deb}
 
 # Меняем версию пакета в файлах сборки
 # настраивается под конкретный собираемый пакет
@@ -85,14 +87,21 @@ make package/"${APP_NAME}"/{clean,compile} ${deb}
 [ -d "${APPS_ROOT}/${APP_NAME}/ipk" ] || mkdir -p "${APPS_ROOT}/${APP_NAME}/ipk"
 cp "$(get_ipk_package_file)" "${APPS_ROOT}/${APP_NAME}/ipk"
 
+do_package_make "${deb}"
+
 show_line
 app_tar_name=$(get_ipk_package_file)
-# копируем собранный пакет на роутер
-copy_app_to_router "$(get_ipk_package_file)" "${app_tar_name}"
-run_reinstalation_on_router "${app_tar_name}"
-# run_tests
-echo "Сборка завершена: $(zdump EST-3)";
 
-# Запускаем тесты
+if is_ip_or_host_alive ; then
+# копируем собранный пакет на роутер
+    copy_app_to_router "$(get_ipk_package_file)" "${app_tar_name}"
+    run_reinstalation_on_router "${app_tar_name}"
+    # Запускаем тесты
+    run_tests
+else
+    echo -e "${RED}${PREF}Устройство не доступно!${NOCL}"
+    echo -e "${BLUE}${PREF}Установка и тестирование пакета пропущены!${NOCL}"
+fi
 show_line
-ask_run_tests
+echo "${PREF}Сборка завершена: $(zdump EST-3)";
+show_line
