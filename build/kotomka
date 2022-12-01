@@ -131,8 +131,6 @@ prepare_makefile(){
          s/@SOURCE_DIR/${source_dir}/g;" "${make_file}"
 
     awkfun -i inplace -v r="${APP_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' "${make_file}"
-    awkfun -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' "${make_file}"
-    awkfun -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' "${make_file}"
 
     echo "${PREF}Makefile успешно создан"
 }

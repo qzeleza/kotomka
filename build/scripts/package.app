@@ -14,19 +14,48 @@ else
     np="$(nproc)";
 fi
 
+
+APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
+APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/package/utils/${APP_NAME}
+#----------------------------------------------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# Сохраняем данные из файлов ./compile/postinst ./compile/postrm в файл манифеста  /compile/Makefile.<ext>
+#----------------------------------------------------------------------------------------------------------------------
+save_post_blocks(){
+
+    extension=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
+    make_file="${APPS_ROOT}/${APP_NAME}/compile/Makefile.${extension}"
+    make_file_tmp="${make_file}.tmp"
+    post_inst=$(cat < "${APPS_ROOT}/${APP_NAME}/compile/postinst")
+    post_term=$(cat < "${APPS_ROOT}/${APP_NAME}/compile/postrm")
+
+
+    cat < "${make_file}" \
+        | sed '/postinst/,/endef/ { /postinst/n; /postrm/n; {/.*/d;};};' \
+        | sed 's/\(.*postinst\)/\1\n\t@POSTINST\nendef/' \
+        | sed '/postrm/,/endef/ { /postrm/n; {/.*/d;};};' \
+        | sed 's/\(.*postrm\)/\1\n\t@POSTRM\nendef/' > "${make_file_tmp}"
+
+    awk -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' "${make_file_tmp}"
+    awk -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' "${make_file_tmp}"
+
+    mv -f "${make_file_tmp}" "${make_file}"
+    cp "${make_file}" "${APP_MAKE_BUILD_PATH}/Makefile"
+}
+
 #----------------------------------------------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим первую сборку toolchain в контейнере
 # В случае необходимости устанавливаем флаг отладки в YES
 #----------------------------------------------------------------------------------------------------------------------
-APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-extension=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
-app_make_build_path=${APPS_ROOT}/entware/package/utils/${APP_NAME}
-make_file="${APPS_ROOT}/${APP_NAME}/compile/Makefile.${extension}"
 
-cp -rf "${APPS_ROOT}/${APP_NAME}/code/." "${app_make_build_path}/files"
-cp "${make_file}" "${app_make_build_path}/Makefile"
 
+
+cp -rf "${APPS_ROOT}/${APP_NAME}/code/." "${APP_MAKE_BUILD_PATH}/files"
+save_post_blocks
+
+cat ${APPS_ROOT}/${APP_NAME}/compile/Makefile.cpp
+exit
 show_line
 echo "${PREF}Задействовано ${np} яд. процессора."
 echo "${PREF}Опции отладки: DEBUG = ${DEBUG}, ${deb}"

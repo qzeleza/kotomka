@@ -44,10 +44,8 @@ define Package/@APP_NAME/install
 endef
 
 define Package/@APP_NAME/postinst
-	@POSTINST
 endef
 define Package/@APP_NAME/postrm
-	@POSTRM
 endef
 
 $(eval $(call BuildPackage,@APP_NAME))
