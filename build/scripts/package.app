@@ -62,6 +62,7 @@ save_post_blocks(){
 
     awk -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' "${make_file_tmp}"
     awk -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' "${make_file_tmp}"
+    echo "\$(eval \$(call BuildPackage,kotomka))" >> "${make_file_tmp}"
 
     mv -f "${make_file_tmp}" "${make_file}"
     cp "${make_file}" "${APP_MAKE_BUILD_PATH}/Makefile"

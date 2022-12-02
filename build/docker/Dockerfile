@@ -21,7 +21,7 @@ RUN chmod 1777 /tmp \
     libc6:i386 libncurses5:i386 libstdc++6:i386 \
     build-essential subversion libncurses5-dev zlib1g-dev gawk  \
     gcc-multilib flex git-core gettext libssl-dev \
-    rsync unzip wget file nano \
+    rsync unzip wget file nano iputils-ping \
     python2 python3 python3-dev python3-distutils-extra \
     && apt-get -y autoremove \
     && apt-get clean \

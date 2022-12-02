@@ -413,23 +413,32 @@ manager_container_to_make(){
 	script_to_run="${1}"
 	run_with_root="${2:-no}"
 
+    if is_mac_os_x ; then
+        ps -x | grep 'Docker.app' | grep -vq grep || {
+            echo -e "${PREF}${RED}Сервис Docker не запущен! Для запуска наберите команду 'open -a Docker'${NOCL}"
+            show_line
+            exit 1
+        }
+    fi
+
     if [ "${run_with_root}" = yes ]; then _user=root; else _user=${USER}; fi
-	docker_id=$(docker ps | grep "${CONTAINER_NAME}" | head -1 | cut -d' ' -f1 )
-	if [ -n "${docker_id}" ]; then
-	    connect_when_run "${script_to_run}" "${run_with_root}" "${docker_id}" "${_user}"
-	else
-		docker_id=$(docker ps -a | grep "${CONTAINER_NAME}" | head -1 | cut -d' ' -f1 )
-		if [ -n "${docker_id}" ]; then
-		    connect_when_stopped "${script_to_run}" "${run_with_root}" "${docker_id}" "${_user}"
-		else
-		    if docker image ls | grep -q "${IMAGE_NAME}"; then
+    docker_id=$(docker ps | grep "${CONTAINER_NAME}" | head -1 | cut -d' ' -f1 )
+    if [ -n "${docker_id}" ]; then
+        connect_when_run "${script_to_run}" "${run_with_root}" "${docker_id}" "${_user}"
+    else
+        docker_id=$(docker ps -a | grep "${CONTAINER_NAME}" | head -1 | cut -d' ' -f1 )
+        if [ -n "${docker_id}" ]; then
+            connect_when_stopped "${script_to_run}" "${run_with_root}" "${docker_id}" "${_user}"
+        else
+            if docker image ls | grep -q "${IMAGE_NAME}"; then
                 connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${_user}"
             else
                 create_env_file
                 image_build "${script_to_run}"
             fi
-		fi
-	fi
+        fi
+    fi
+
 	show_line
 }
 
