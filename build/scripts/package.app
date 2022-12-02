@@ -103,7 +103,9 @@ echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
 show_line
 echo "${PREF}Сборка запущена: $(zdump EST-3)"; show_line
 
+time_start=$(date +%s)
 # Собираем пакет
+
 do_package_make "${deb}"
 
 # копируем собранный пакет в папку где хранятся все сборки
@@ -122,9 +124,11 @@ if is_ip_or_host_alive "${router_ip}"; then
     # Запускаем тесты
     run_tests
 else
-    echo -e "${RED}${PREF}IP адрес устройства ${router_ip} - НЕ доступен!${NOCL}"
+    echo -e "${RED}${PREF}IP адрес устройства '${router_ip}' - НЕ доступен!${NOCL}"
     echo -e "${RED}${PREF}Установку и тестирование пакета пропускаем!${NOCL}"
 fi
 
 show_line
-echo "${PREF}Сборка завершена: $(zdump EST-3)"
+
+time_end=$(date +%s)
+echo "${PREF}Продолжительность сборки составила: $(time_diff "${time_start}" "${time_end}")"
