@@ -55,14 +55,12 @@ save_post_blocks(){
 
 
     cat < "${make_file}" \
-        | sed '/postinst/,/endef/ { /postinst/n; /postrm/n; {/.*/d;};};' \
-        | sed 's/\(.*postinst\)/\1\n\t@POSTINST\nendef/' \
-        | sed '/postrm/,/endef/ { /postrm/n; {/.*/d;};};' \
-        | sed 's/\(.*postrm\)/\1\n\t@POSTRM\nendef/' > "${make_file_tmp}"
+        | sed '/postinst/,/endef/ { /postinst/n; /endef/n; /postrm/n; /eval/n; {/.*/d;};};' \
+        | sed 's/\(.*postinst\)/\1\n\t@POSTINST/; s/\(.*postrm\)/\1\n\t@POSTRM/' \
+         > "${make_file_tmp}"
 
     awk -i inplace -v r="${post_inst}" '{gsub(/@POSTINST/,r)}1' "${make_file_tmp}"
     awk -i inplace -v r="${post_term}" '{gsub(/@POSTRM/,r)}1' "${make_file_tmp}"
-    echo "\$(eval \$(call BuildPackage,kotomka))" >> "${make_file_tmp}"
 
     mv -f "${make_file_tmp}" "${make_file}"
     cp "${make_file}" "${APP_MAKE_BUILD_PATH}/Makefile"
@@ -99,7 +97,7 @@ save_post_blocks
 
 show_line
 echo "${PREF}Задействовано ${np} яд. процессора."
-echo "${PREF}Опции отладки: DEBUG = ${DEBUG}, ${deb}"
+echo "${PREF}Режим отладки: $([ "${DEBUG}" = YES ] && echo "ВКЛЮЧЕН" || echo "ОТКЛЮЧЕН")"
 echo "${PREF}Makefile успешно импортирован."
 echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
 show_line
@@ -115,7 +113,8 @@ cp "$(get_ipk_package_file)" "${APPS_ROOT}/${APP_NAME}/ipk"
 show_line
 
 # проверяем на доступность ip роутера
-if is_ip_or_host_alive ; then
+router_ip=${ROUTER//*@/}
+if is_ip_or_host_alive "${router_ip}"; then
     app_tar_name=$(get_ipk_package_file)
     # копируем собранный пакет на роутер
     copy_app_to_router "$(get_ipk_package_file)" "${app_tar_name}"
@@ -123,10 +122,9 @@ if is_ip_or_host_alive ; then
     # Запускаем тесты
     run_tests
 else
-    echo -e "${RED}${PREF}IP устройства не доступно!${NOCL}"
-    echo -e "${BLUE}${PREF}Установка и тестирование пакета НЕ произведены!${NOCL}"
+    echo -e "${RED}${PREF}IP адрес устройства ${router_ip} - НЕ доступен!${NOCL}"
+    echo -e "${RED}${PREF}Установку и тестирование пакета пропускаем!${NOCL}"
 fi
 
 show_line
-echo "${PREF}Сборка завершена: $(zdump EST-3)";
-show_line
+echo "${PREF}Сборка завершена: $(zdump EST-3)"
