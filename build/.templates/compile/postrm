@@ -1,4 +1,0 @@
-#!/bin/sh
-
-# Пишем сообщение в лог роутера об удалении пакета с устройства
-logger -p err -t "PACKAGE INSTALLATION " "УДАЛЕНИЕ ПАКЕТА @APP_NAME!"
