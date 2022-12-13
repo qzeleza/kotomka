@@ -18,7 +18,7 @@ define Package/@APP_NAME
 	SECTION:=utils
 	URL:=@GITHUB
 	DEPENDS:=+libstdcpp +librt +libpthread
-	PKGARCH:=mipsel-3.4_kn
+	PKGARCH:=@PKGARCH
 endef
 
 define Package/@APP_NAME/description
@@ -34,8 +34,9 @@ endef
 define Build/Configure
 endef
 
+#mipsel-openwrt-linux-gnu-g++
 define Build/Compile
-	$(MAKE) -C $(PKG_BUILD_DIR) CC="mipsel-openwrt-linux-gnu-g++" CFLAGS="$(TARGET_CFLAGS) -Wall" LDFLAGS="$(TARGET_LDFLAGS)"
+	$(MAKE) -C $(PKG_BUILD_DIR) CC="$(TARGET_CXX)" CFLAGS="$(TARGET_CXXFLAGS) -Wall" LDFLAGS="$(TARGET_LDFLAGS)"
 endef
 
 define Package/@APP_NAME/install
@@ -43,9 +44,8 @@ define Package/@APP_NAME/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/@APP_NAME $(1)/opt/bin/
 endef
 
-define Package/@APP_NAME/postinst
-endef
-define Package/@APP_NAME/postrm
-endef
+@POSTINST
+
+@POSTRM
 
 $(eval $(call BuildPackage,@APP_NAME))

@@ -44,9 +44,8 @@ define Package/@APP_NAME/install
 	$(CP) ./files/. $(1)@APP_ROUTER_DIR
 endef
 
-define Package/@APP_NAME/postinst
-endef
-define Package/@APP_NAME/postrm
-endef
+@POSTINST
+
+@POSTRM
 
 $(eval $(call BuildPackage,@APP_NAME))
