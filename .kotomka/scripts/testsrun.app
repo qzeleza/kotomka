@@ -23,6 +23,6 @@
 #-------------------------------------------------------------------------------
 
 BASEDIR=$(dirname "$(dirname "${0}")")
-. "${BASEDIR}/scripts/library" "${BASEDIR}"
+. "${BASEDIR}/apps/library" "$(dirname "${BASEDIR}")"
 
 run_tests

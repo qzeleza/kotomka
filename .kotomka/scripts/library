@@ -21,8 +21,10 @@
 # прочтение и неукоснительное соблюдение всех, без исключения,
 # статей, лицензии Apache License 2.0 по вышеуказанным ссылкам.
 #-------------------------------------------------------------------------------
-
-. "./CONFIG"
+DEV_CONFIG_NAME=dev.conf
+DEV_MANIFEST_DIR_NAME=Makefiles
+DEV_CONFIG_FILE="${1}"/"${DEV_CONFIG_NAME}"
+. "${DEV_CONFIG_FILE}"
 set -e
 
 RED="\033[1;31m";
@@ -36,6 +38,13 @@ APPS_ROOT=/apps
 # Данные учетной записи от имени которой собираем пакет
 #-------------------------------------------------------------------------------
 USER=master; GROUP=staff; U_ID=5001; G_ID=5001
+
+#-------------------------------------------------------------------------------
+#  Создаем папку если ее нет
+#-------------------------------------------------------------------------------
+mkdir_when_not(){
+    [ -d "${1}" ] || mkdir -p "${1}"
+}
 
 #-------------------------------------------------------------------------------
 # Печатаем ответ из консоли Y/N/Q
@@ -97,20 +106,20 @@ APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
 #-------------------------------------------------------------------------------
 get_version_part(){
 	value=${1}
-	cat < "./CONFIG" | grep "${value}" | cut -d'=' -f2 | tr -d ' '
+	cat < "${DEV_CONFIG_FILE}" | grep "${value}" | cut -d'=' -f2 | tr -d ' '
 }
 
-VERSION=$(get_version_part VERSION)
-STAGE=$(get_version_part STAGE)
-RELEASE=$(get_version_part RELEASE)
+PACKAGE_VERSION=$(get_version_part PACKAGE_VERSION)
+PACKAGE_STAGE=$(get_version_part PACKAGE_STAGE)
+PACKAGE_RELEASE=$(get_version_part PACKAGE_RELEASE)
 
-if [ -n "${STAGE}" ]; then FULL_VERSION="${VERSION} ${STAGE} ${RELEASE}"; else FULL_VERSION="${VERSION} ${RELEASE}"; fi
+if [ -n "${PACKAGE_STAGE}" ]; then FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_STAGE} ${PACKAGE_RELEASE}"; else FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_RELEASE}"; fi
 
 #-------------------------------------------------------------------------------
 # Получаем значение из скрытого файла конфигурации
 #-------------------------------------------------------------------------------
 get_config_value(){
-  cat < "${BASEDIR}/CONFIG" | grep -E "^${1}=" | cut -d'=' -f2
+  cat < "${DEV_CONFIG_FILE}" | grep -E "^${1}=" | cut -d'=' -f2
 }
 
 #-------------------------------------------------------------------------------
@@ -121,14 +130,27 @@ APP_NAME=$(echo "${BASEDIR}" | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d
 # Получаем тип архитектуры процессора роутера
 #-------------------------------------------------------------------------------
 get_router_arch(){
-    cat < "${APPS_ROOT}/entware/package/utils/${APP_NAME}/Makefile" | grep -v '#' | sed -n 's/\(^.*PKGARCH:=\)\(.*\)$/\2/p'
+    cat < "${APPS_ROOT}/entware/package/utils/${APP_NAME}/Makefile" \
+    	| grep -v '#' | sed -n 's/\(^.*PKGARCH:=\)\(.*\)$/\2/p'
 }
+
 #-------------------------------------------------------------------------------
 # Получаем имя пакета для сборки
 #-------------------------------------------------------------------------------
-get_ipk_package_name(){
-    echo "${APP_NAME}_${VERSION}-${STAGE}-${RELEASE}_${ARCH_BUILD}.ipk"
+get_full_package_version(){
+	if [ -n "${PACKAGE_STAGE}" ] ; then stg="-${PACKAGE_STAGE}"; else stg=""; fi
+	if [ -n "${PACKAGE_RELEASE}" ] ; then rel="-${PACKAGE_RELEASE}"; else rel=""; fi
+	echo "${PACKAGE_VERSION}${stg}${rel}"
 }
+
+
+#-------------------------------------------------------------------------------
+# Получаем имя пакета ipk файла для сборки в контейнере
+#-------------------------------------------------------------------------------
+get_ipk_package_name(){
+	echo "${APP_NAME}_$(get_full_package_version)_${ARCH_BUILD}.ipk"
+}
+
 #-------------------------------------------------------------------------------
 # Получаем полный путь до пакета сборки в контейнере
 #-------------------------------------------------------------------------------
@@ -175,7 +197,8 @@ copy_ssh_keys_to_router(){
 #-------------------------------------------------------------------------------
 run_reinstalation_on_router(){
 	ssh -p "${PORT}" "root@${ROUTER_IP}" 'opkg remove '"${APP_NAME}"
-	ssh -p "${PORT}" "root@${ROUTER_IP}" 'opkg install /opt/packages/'"$(get_ipk_package_name)"  #<<< 2
+	cmd='[ -d /opt/packages ] || mkdir /opt/packages; opkg install /opt/packages/'"$(get_ipk_package_name)"
+	ssh -p "${PORT}" "root@${ROUTER_IP}" "${cmd}" #<<< 2
 }
 
 #-------------------------------------------------------------------------------========================================
@@ -185,12 +208,10 @@ run_reinstalation_on_router(){
 #
 #-------------------------------------------------------------------------------========================================
 change_version_in_package(){
-	sed -i "s/^\(APP_VERSION=\).*/\1${VERSION}/g" \
+	sed -i "s/^\(APP_VERSION=\).*/\1${PACKAGE_VERSION}/g" \
 		"${APPS_ROOT}"/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
-	sed -i "s/^\(APP_RELEASE=\).*/\1${STAGE}-${RELEASE}/g" \
+	sed -i "s/^\(APP_RELEASE=\).*/\1${PACKAGE_STAGE}-${PACKAGE_RELEASE}/g" \
 		"${APPS_ROOT}"/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
-	sed -i -e 's/\(^.*Крайняя версия Кваса.\)\[.*\]\(.*\)/\1 ['"${FULL_VERSION}"']\2/' \
-		"${APPS_ROOT}"/"${APP_NAME}"/README.md
 }
 
 #-------------------------------------------------------------------------------
