@@ -6,6 +6,7 @@ ARG GID="${G_ID}"
 ARG GROUP="${GROUP}"
 ARG APP_NAME="${APP_NAME}"
 ARG APPS_ROOT="${APPS_ROOT}"
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN chmod 1777 /tmp \
     && dpkg --add-architecture i386  \
@@ -21,7 +22,7 @@ RUN chmod 1777 /tmp \
         gcc-multilib flex git-core gettext libssl-dev \
         rsync unzip wget file nano iputils-ping \
         python2 python3 python3-dev python3-distutils-extra \
-    && apt-get -y autoremove \
+    && DEBIAN_FRONTEND=noninteractive apt-get -y autoremove \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,10 +36,12 @@ RUN rm -rf /var/lib/apt/lists/* \
     && cd bats && ./install.sh /usr/local \
     && mkdir -p ${APPS_ROOT}/entware/package/utils/${APP_NAME}/files ${APPS_ROOT}/${APP_NAME}
 
-RUN chown -R ${USER}:${GROUP} ${APPS_ROOT}/entware ${APPS_ROOT}/${APP_NAME}
+RUN chown -R ${USER}:${GROUP} ${APPS_ROOT}/entware ${APPS_ROOT}/${APP_NAME} \
+    && echo "export LANG=ru_RU.UTF-8" >> ~/.bashrc
 
 USER ${USER}
-RUN ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+RUN ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa \
+    && echo "export LANG=ru_RU.UTF-8" >> ~/.bashrc
 
 
 

@@ -21,7 +21,7 @@
 # прочтение и неукоснительное соблюдение всех, без исключения,
 # статей, лицензии Apache License 2.0 по вышеуказанным ссылкам.
 #-------------------------------------------------------------------------------
-DEV_CONFIG_NAME=dev.conf
+DEV_CONFIG_NAME=build.conf
 DEV_MANIFEST_DIR_NAME=Makefiles
 DEV_CONFIG_FILE="${1}"/"${DEV_CONFIG_NAME}"
 . "${DEV_CONFIG_FILE}"

@@ -100,7 +100,7 @@ DEVELOP_EXT=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 #-------------------------------------------------------------------------------
 #	Пути к файлам внутри контейнера
 #-------------------------------------------------------------------------------
-SCRIPTS_PATH=${APPS_ROOT}/${APP_NAME}/${DEV_NAME_PATH}/apps
+SCRIPTS_PATH=${APPS_ROOT}/${APP_NAME}/${DEV_NAME_PATH}/scripts
 SCRIPT_TO_MAKE=${SCRIPTS_PATH}/package.app
 SCRIPT_TO_COPY=${SCRIPTS_PATH}/copy.app
 SCRIPT_TO_TEST=${SCRIPTS_PATH}/testsrun.app
@@ -146,13 +146,12 @@ arch_list(){
 #-------------------------------------------------------------------------------
 prepare_makefile(){
 set -x
-    if [ -n "${1}" ] ; then arch="${1}/"; else arch=""; fi
 
     app_router_dir=$(escape "/opt${APPS_ROOT}/${APP_NAME}")
     github_url=$(escape "https://github.com/${GITHUB_ACCOUNT_NAME}/${APP_NAME}")
     source_dir=$(escape "${APPS_ROOT}/${APP_NAME}")
 
-    make_file="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${arch}Makefile"
+    make_file="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/Makefile"
 
     sed -i "${SEP}" "s/@APP_NAME/$(escape "${APP_NAME}")/g; \
          s/@PACKAGE_VERSION/$(escape "${PACKAGE_VERSION}" | tr -d ' ')/g; \
@@ -200,8 +199,6 @@ create_sections (){
 #  Производим первоначальные настройки пакета в зависимости от заявленного языка разработки
 #-------------------------------------------------------------------------------
 set_dev_language(){
-
-    if [ -n "${1}" ] ; then arch="${1}/"; else arch=""; fi
 
     case "${APPS_LANGUAGE}" in
         CCC|ccc)    lang="Си" ;;
@@ -256,7 +253,7 @@ set_dev_language(){
     create_sections "${manifest_scripts_path}"
     sedi '/^[[:space:]]*$/d' "${makefile_path}Makefile"
 
-	prepare_makefile "${arch}"
+	prepare_makefile
 
 #   меняем имя пакета в файле для удаленных тестов
     tests_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_TESTS_NAME}"
@@ -270,7 +267,6 @@ set_dev_language(){
 #-------------------------------------------------------------------------------
 check_dev_language(){
 set -x
-    if [ -n "${1}" ] ; then arch="${1}/"; else arch=""; fi
 
     manifest_file=$(find ../.. -type f | grep "${DEV_COMPILE_NAME}/${arch}Makefile" | head -1)
 
@@ -278,21 +274,21 @@ set -x
         if ! cat < "${manifest_file}" | grep -qi "для ${DEVELOP_EXT}"; then
             echo -e "${RED}${PREF}Обнаружено несоответствие файлов проекта с заявленным${NOCL}"
             echo -e "${RED}${PREF}языком разработки для архитектуры процессора ${BLUE}${PREF}${arch}${NOCL}"
-            set_dev_language "${arch}"
+            set_dev_language
         fi
     else
-        set_dev_language "${arch}"
+        set_dev_language
     fi
 }
 
 #-------------------------------------------------------------------------------
 #  Создаем структуру папок для разработки в случае
-#  инициализации проекта (описана в dev.conf) передаем
+#  инициализации проекта (описана в build.conf) передаем
 #  внутрь, как минимум одно и как максимум несколько названий
 #  архитектуры процессоров разделенных пробелами
 #-------------------------------------------------------------------------------
 prepare_code_structure(){
-set -x
+
     mkdir_when_not  "${PATH_PREFIX}${DEV_ROOT_PATH}"
     mkdir_when_not  "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_SRC_PATH}"
 
@@ -311,25 +307,15 @@ set -x
         mkdir -p "${opt_path}/etc/ndm/fs.d" "${opt_path}/etc/ndm/wan.d"
     }
 #   создаем папку /packages
-    [ -n "${DEV_IPK_NAME}" ] && ! [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_IPK_NAME}" ] || {
+    if [ -n "${DEV_IPK_NAME}" ] && ! [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_IPK_NAME}" ]; then
         mkdir -p "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_IPK_NAME}"
-    }
+    fi
 
-# блок необходим в случае, если необходимо создавать
-# разные файлы манифеста для каждой архитектуры устройства
-#    list_arch=$(arch_list)
-#    for arch in ${list_arch}; do
-#        [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${arch}" ] || {
-#            mkdir -p "${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${arch}/${DEV_MANIFEST_DIR_NAME}"
-#            check_dev_language "${arch}"
-#            prepare_makefile "${arch}"
-#        }
-#    done
-    [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/" ] || {
+    if ! [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/" ]; then
         mkdir -p "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${DEV_MANIFEST_DIR_NAME}"
-        check_dev_language "${arch}"
-    }
-set +x
+        check_dev_language
+    fi
+
 }
 #-------------------------------------------------------------------------------
 #  Готовим систему к запуску пакета
@@ -344,7 +330,6 @@ check_system(){
             brew install gawk
         fi
         SEP=''
-#   Если система Linux
     fi
 
 }
@@ -370,6 +355,26 @@ purge_running_container(){
 	docker rm "${container_id_exited}"
 }
 
+#-------------------------------------------------------------------------------
+#  Получаем номер порта для удаленных устройств из файла конфигурации
+#-------------------------------------------------------------------------------
+get_router_ip(){
+	arch=${1}
+	cat < "${DEV_CONFIG_FILE}" \
+		| grep -v '#' | grep -v 'NO' | grep -E "ARCH_.*_ROUTER" \
+		| grep -i "${arch}" \
+		| cut -d'=' -f2
+}
+
+#-------------------------------------------------------------------------------
+#  Получаем номер порта для удаленных устройств из файла конфигурации
+#-------------------------------------------------------------------------------
+get_router_port(){
+	cat < "${DEV_CONFIG_FILE}" \
+		| grep -v '#' \
+		| grep -E "ROUTERS_PORT" \
+		| cut -d'=' -f2
+}
 
 #-------------------------------------------------------------------------------
 #  Запускаем Docker exec с параметрами
@@ -384,24 +389,20 @@ docker_exec(){
     script_to_run=${2};
     root=${3};
     arch_build=${4}
-
-    router_ip=$(cat < "${DEV_CONFIG_FILE}" \
-                | grep -v '#' | grep -v 'NO' | grep -E "ARCH_.*_ROUTER" \
-                | grep -i "${arch_build//-/_}" \
-                | cut -d'=' -f2)
-    router_port=$(cat < "${DEV_CONFIG_FILE}" \
-                    | grep -v '#' | grep -v 'NO' | grep -E "ARCH_.*_PORT" \
-                    | grep -i "${arch_build//-/_}" \
-                    | cut -d'=' -f2)
+	router_ip=$(get_router_ip "${arch_build//-/_}")
 
     if [ "${root}" = root ]; then user="--user root:root"; else user="--user ${USER}:${GROUP}"; fi
     docker exec \
 			--interactive --tty \
 			--workdir "${WORK_PATH_IN_CONTAINER}" \
-			--env ROUTER_IP="${router_ip}" --env PORT="${router_port}" \
+			--env ROUTER_IP="$(get_router_ip "${arch_build//-/_}")" \
+			--env PORT="$(get_router_port)" \
 			--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
-			--env ROOT_PATH="${DEV_ROOT_PATH}" \
-			--env ARCH_BUILD="${arch_build}" ${user} \
+			--env ROOT_PATH="${DEV_ROOT_PATH//.\//}" \
+			--env OPT_PATH="${DEV_OPT_PATH}" \
+           	--env SRC_PATH="${DEV_SRC_PATH}" \
+           	--env ARCH_BUILD="${arch_build}" ${user} \
+		   	--env IPK_PATH="${DEV_IPK_NAME}" \
 			"${container_id_exited}" /bin/bash ${script_to_run}
 }
 
@@ -422,16 +423,20 @@ docker_run(){
     if [ -n "${container_name}" ] ; then name_cnt="--name ${container_name}"; else name_cnt=""; fi
 
     docker run \
-           --interactive --tty \
-           --workdir "${WORK_PATH_IN_CONTAINER}" \
-           --env ROUTER_IP="${router_ip}" -e PORT="${router_port}" \
-           --env ARCH_BUILD="${arch}" \
-           --env COMPILE_NAME="${DEV_COMPILE_NAME}" \
-           --env ROOT_PATH="${DEV_ROOT_PATH}" \
-           --user "${user}" \
-           ${name_cnt} \
-           --mount type=bind,src="${context}",dst="${APPS_ROOT}"/"${APP_NAME}" \
-           "$(get_image_id)" /bin/bash ${script_to_run} || {
+           	--interactive --tty \
+           	--workdir "${WORK_PATH_IN_CONTAINER}" \
+			--env ROUTER_IP="$(get_router_ip "${arch_build//-/_}")" \
+			--env PORT="$(get_router_port)" \
+           	--env ARCH_BUILD="${arch}" \
+           	--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
+			--env ROOT_PATH="${DEV_ROOT_PATH//.\//}" \
+			--env OPT_PATH="${DEV_OPT_PATH}" \
+           	--env SRC_PATH="${DEV_SRC_PATH}" \
+		   	--env IPK_PATH="${DEV_ROOT_PATH}/${DEV_IPK_NAME}" \
+           	--user "${user}" \
+           	${name_cnt} \
+           	--mount type=bind,src="${context}",dst="${APPS_ROOT}"/"${APP_NAME}" \
+           	"$(get_image_id)" /bin/bash ${script_to_run} || {
                show_line;
                echo "${PREF}В процессе сборки пакета возникли ошибки в контейнере ${container_name} !"
                exit 1
@@ -478,10 +483,12 @@ connect_when_stopped(){
     docker start "${container_id_exited}"
     show_line
 
-    docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}" || {
-    	docker rm "${container_id_exited}"
-    	connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${arch}" "${container_name}"
-    }
+    docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
+    #; then
+    #	docker stop "${container_id_exited}"
+    #	docker rm "${container_id_exited}"
+    #	connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${arch}" "${container_name}"
+    #fi
 }
 
 #-------------------------------------------------------------------------------
@@ -619,7 +626,6 @@ set -x
     fi
     if [[ "${APPS_LANGUAGE}" =~ BASH|bash|Bash|sh|SH|Sh ]] ; then
         container_run_to_make "${script_to_run}" "${run_with_root}" "$(get_container_name "all")" "all"
-        show_line
     else
 
     	list_arch="$(arch_list)"
@@ -638,27 +644,21 @@ set -x
         else
             choice=${count}
         fi
-        show_line
 
         if [ "${choice}" = q ] ; then exit 1;
         elif [ "${choice}" = ${count} ] && [ -n "${script_to_run}" ]; then
 #       в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
             for _arch in ${list_arch}; do
                 container_run_to_make "${script_to_run}" "${run_with_root}" "${_arch}"
-                docker stop "$(get_container_name "${_arch}")"
+#                docker stop "$(get_container_name "${_arch}")"
                 show_line
             done
-        elif [ -z "${script_to_run}" ]; then
-#       если запустили просто в режиме терминала
-            arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
-            container_run_to_make "${script_to_run}" "${run_with_root}" "${arch}"
-            docker stop "$(get_container_name "${arch}")"
-            show_line
         else
-            echo "${PREF}${RED}Ошибка в переданных аргументах ${NOCL}"
-            echo "${PREF}Запуск в режиме 'make', но не был сделан выбор из списка."
-        fi
+        	arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
+        	container_run_to_make "${script_to_run}" "${run_with_root}" "${arch}"
+		fi
     fi
+    show_line
 set +x
 }
 

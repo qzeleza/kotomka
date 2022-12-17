@@ -27,44 +27,39 @@ set -e
 set -x
 
 BASEDIR=$(dirname "$(dirname "${0}")")
-. "${BASEDIR}/apps/library" "$(dirname "${BASEDIR}")"
-DEBUG=NO
+. "${BASEDIR}/scripts/library" "$(dirname "${BASEDIR}")"
 
+DEBUG=NO
 if echo "${DEBUG}" | grep -qE 'YES|yes'; then
-    deb="-j1 V=sc";
-    np=1;
+    deb="-j1 V=sc"; np=1;
 else
-    deb="-j$(nproc)";
-    np="$(nproc)";
+    deb="-j$(nproc)"; np="$(nproc)";
 fi
 
 
 APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
 APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/package/utils/${APP_NAME}
-COMPILE_PATH=${APPS_ROOT}/${APP_NAME}/${ROOT_PATH//.\//}/${COMPILE_NAME}
-BUILD_CONFIG="${APPS_ROOT}/entware/.config"
+APPS_PATH=${APPS_ROOT}/${APP_NAME}
+COMPILE_PATH=${APPS_PATH}/${ROOT_PATH}/${COMPILE_NAME}
+ENTWARE_PATH=${APPS_ROOT}/entware
+BUILD_CONFIG="${ENTWARE_PATH}/.config"
 PREV_PKGARCH=''
+
+
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
-# Проверяем
+# копируем данные кода в папку для компиляции
 #-------------------------------------------------------------------------------
-check_arch(){
-
-	configs_path="${COMPILE_PATH}/configs"
-    mkdir_when_not "${configs_path}"
-
-    if [ "${PREV_PKGARCH}" = "${ARCH_BUILD}" ]; then
-        [ -f "${configs_path}/${ARCH_BUILD}.config" ] &&
-            cp -f  "${configs_path}/${ARCH_BUILD}.config" "${BUILD_CONFIG}"
-    else
-        # в случае отсутствия .config копируем его
-        if ! [ -f "${BUILD_CONFIG}" ]; then
-            cd "${APPS_ROOT}/entware/"
-            [ "${PREV_PKGARCH}" = '@PKGARCH' ] || make dirclean
-            cp "$(ls "${APPS_ROOT}"/entware/configs/"${ARCH_BUILD}".config)" "${BUILD_CONFIG}"
-        fi
-    fi
+copy_code_files(){
+	# копируем данные кода в папку для компиляции
+	build_files_path=${APP_MAKE_BUILD_PATH}/files
+	rm -rf "${build_files_path}"
+	mkdir_when_not "${build_files_path}/opt"
+    cp -rf "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}/." "${build_files_path}/opt"
+    mkdir_when_not "${build_files_path}/src"
+    cp -rf "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}/." "${build_files_path}/src"
 }
+
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
@@ -96,43 +91,14 @@ create_package_section(){
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
-#  Создаем секцию Package/project/install в случае, если
-#  в папке opt и ниже по ее структуре есть файлы
-#  для файла манифеста
-#-------------------------------------------------------------------------------
-#make_install_section_for_opt(){
-#
-#	install_section=""
-#	install_section=$(printf "%s\n%s\n" "${install_section}" "\$(INSTALL_DIR) \$(1)/opt/bin" )
-#	install_section=$(printf "%s\n%s\n" "${install_section}" "\$(INSTALL_BIN) \$(PKG_BUILD_DIR)/${APP_NAME} \$(1)/opt/bin/")
-#	opt_founded_files=$(find "${OPT_PATH}" -type f)
-#	if [ -n "${opt_founded_files}" ]; then
-#		for opt_file in $(find "${OPT_PATH}" -type f); do
-#			file_path=$(dirname "${opt_file}")
-#			$(PKG_BUILD_DIR)/@APP_NAME $(1)/opt/bin/
-#			install_section=$(printf "%s\n%s\n" "${install_section}" "\$(INSTALL_DIR) \$(1)${file_path}")
-#			install_section=$(printf "%s\n%s\n" "${install_section}" "\$(INSTALL_BIN) \$(1)${file_path}")
-#		done
-#	else
-#		sed -i "s|@INSTALL_OPT_SECTION||" "${APP_MAKE_BUILD_PATH}/Makefile"
-#	fi
-#	install_section=$(printf "%s\n%s\n" "${install_section}" "endef" )
-#}
-
-#-------------------------------------------------------------------------------
-# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Сохраняем данные из файлов ./${COMPILE_NAME}/postinst
 # ./${COMPILE_NAME}/postrm в файл манифеста  /${COMPILE_NAME}/Makefile
 #-------------------------------------------------------------------------------
 create_makefile(){
 
-#    extension=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
     make_file="${COMPILE_PATH}/Makefile"
+
     PREV_PKGARCH=$(cat < "${make_file}" | sed -n 's/PKGARCH:=\(.*\)$/\1/p;' | sed 's/[ \t]//g')
-
-    # копируем данные кода в папку для компиляции
-    cp -rf "${APPS_ROOT}/${APP_NAME}/code/." "${APP_MAKE_BUILD_PATH}/files"
-
     section_list=$(cat < "${DEV_CONFIG_FILE}" | grep -v '^#' \
                     | grep "SECTION_" | sed 's|SECTION_\(.*\)=.*$|\1|g' \
                     | tr "[:upper:]" "[:lower:]")
@@ -143,10 +109,35 @@ create_makefile(){
 
     sed -i "s|\(PKGARCH:=\).*|\1${ARCH_BUILD}|g;"  	"${make_file}"
     sed -i '/^[[:space:]]*$/d'  "${make_file}" 		"${make_file}"
+
     cp "${make_file}" "${APP_MAKE_BUILD_PATH}/Makefile"
-
-
 }
+
+
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# Проверяем архитектуру сборки
+#-------------------------------------------------------------------------------
+check_arch(){
+
+	configs_path="${COMPILE_PATH}"
+    mkdir_when_not "${configs_path}"
+
+    if [ "${PREV_PKGARCH}" = "${ARCH_BUILD}" ]; then
+		if [ -f "${configs_path}/${ARCH_BUILD}.config" ]; then
+            cp -f  "${configs_path}/${ARCH_BUILD}.config" "${BUILD_CONFIG}"
+        fi
+    else
+        # в случае отсутствия .config копируем его
+        if ! [ -f "${BUILD_CONFIG}" ]; then
+            cd "${ENTWARE_PATH}"
+            if ! [ "${PREV_PKGARCH}" = '@PKGARCH' ] ; then
+            	make dirclean; fi
+            cp "$(ls "${APPS_ROOT}"/entware/configs/"${ARCH_BUILD}".config)" "${BUILD_CONFIG}"
+        fi
+    fi
+}
+
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
@@ -156,15 +147,13 @@ do_package_make(){
 
 set -x
     deb=${1}
-    cd "${APPS_ROOT}/entware/"
+    cd "${ENTWARE_PATH}"
 #    rm -rf /apps/entware/tmp/info
 
     if ! grep -q "${APP_NAME}" "${BUILD_CONFIG}" ; then
     	make oldconfig <<< m
-    	cat /apps/entware/package/utils/kotomka/files/compile/dump.txt
     	make tools/install ${deb}
     	make toolchain/install ${deb}
-        cp -f "${BUILD_CONFIG}" "${COMPILE_PATH}/configs/${ARCH_BUILD}.config"
 #        rm "${BUILD_CONFIG}.old"
     fi
     make package/"${APP_NAME}"/compile ${deb}
@@ -176,37 +165,41 @@ set -x
 # Производим первую сборку toolchain в контейнере
 # В случае необходимости устанавливаем флаг отладки в YES
 #-------------------------------------------------------------------------------
+main_run(){
 
+	# копируем данные кода в папку для компиляции
+	copy_code_files
 
+#	формируем файл манифеста для сборки пакета
+	create_makefile
 
-# Сохраняем данные из файлов ./${COMPILE_NAME}/postinst ./${COMPILE_NAME}/postrm в файл манифеста  /${COMPILE_NAME}/Makefile.<ext>
-create_makefile
-# Проверяем соответствие текущей архитектуры с предыдущей
-# и в случае, если архитектуры разные - делаем очистку make dirclean
-check_arch
+	# Проверяем соответствие текущей архитектуры с предыдущей
+	# и в случае, если архитектуры разные - делаем очистку make dirclean
+	check_arch
 
-show_line
-echo "${PREF}Задействовано ${np} яд. процессора."
-echo "${PREF}Режим отладки: $([ "${DEBUG}" = YES ] && echo "ВКЛЮЧЕН" || echo "ОТКЛЮЧЕН")"
-echo "${PREF}Makefile для ${ARCH_BUILD} успешно импортирован."
-echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
-show_line
-echo "${PREF}Сборка запущена: $(zdump EST-3)"; show_line
+	show_line
+	echo "${PREF}Задействовано ${np} яд. процессора."
+	echo "${PREF}Режим отладки: $([ "${DEBUG}" = YES ] && echo "ВКЛЮЧЕН" || echo "ОТКЛЮЧЕН")"
+	echo "${PREF}Makefile для ${ARCH_BUILD} успешно импортирован."
+	echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
+	show_line
+	echo "${PREF}Сборка запущена: $(zdump EST-3)"; show_line
 
-time_start=$(date +%s)
-# Собираем пакет
+	time_start=$(date +%s)
+	# Собираем пакет
 
-do_package_make "${deb}" || make dirclean
+	do_package_make "${deb}" || make dirclean
 
-# копируем собранный пакет в папку где хранятся все сборки
-ipk_path="${APPS_ROOT}/${APP_NAME}/ipk"
-[ -d "${ipk_path}" ] || mkdir -p "${ipk_path}"
-cp "$(get_ipk_package_file)" "${ipk_path}"
+	# копируем собранный пакет в папку где хранятся все сборки
+	mkdir_when_not "${IPK_PATH}"
+	cp "$(get_ipk_package_file)" "${IPK_PATH}"
 
-show_line
-copy_and_install_package "ask";
-show_line
+	show_line
+	copy_and_install_package "ask";
+	show_line
 
-time_end=$(date +%s)
-echo "${PREF}Продолжительность сборки составила: $(time_diff "${time_start}" "${time_end}")"
+	time_end=$(date +%s)
+	echo "${PREF}Продолжительность сборки составила: $(time_diff "${time_start}" "${time_end}")"
+}
 
+main_run

@@ -23,7 +23,7 @@
 #-------------------------------------------------------------------------------
 
 BASEDIR=$(dirname "$(dirname "${0}")")
-. "${BASEDIR}/apps/library" "$(dirname "${BASEDIR}")"
+. "${BASEDIR}/scripts/library" "$(dirname "${BASEDIR}")"
 set -e
 show_line
 copy_and_install_package ask
