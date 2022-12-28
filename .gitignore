@@ -13,8 +13,8 @@ cmake-build-*/
 # Project exception
 debug/
 backup/
-tests/
+.kotomka/templates/tests/
 
 !code/
-!compile/
-!tests/
+!code/compile/
+!.kotomka/templates/tests/

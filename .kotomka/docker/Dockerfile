@@ -37,11 +37,15 @@ RUN rm -rf /var/lib/apt/lists/* \
     && mkdir -p ${APPS_ROOT}/entware/package/utils/${APP_NAME}/files ${APPS_ROOT}/${APP_NAME}
 
 RUN chown -R ${USER}:${GROUP} ${APPS_ROOT}/entware ${APPS_ROOT}/${APP_NAME} \
-    && echo "export LANG=ru_RU.UTF-8" >> ~/.bashrc
+    && echo "export LANG=ru_RU.UTF-8" >> ~/.bashrc \
+    && sed -i 's|^#.*\(force_color_prompt=yes\)|\1|' ~/.bashrc \
+	&& sed -i "s|u@\\\h|u@\${ARCH_BUILD}|g" ~/.bashrc
 
 USER ${USER}
 RUN ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa \
-    && echo "export LANG=ru_RU.UTF-8" >> ~/.bashrc
+    && echo "export LANG=ru_RU.UTF-8" >> ~/.bashrc \
+    && sed -i 's|^#.*\(force_color_prompt=yes\)|\1|' ~/.bashrc \
+	&& sed -i "s|u@\\\h|u@\${ARCH_BUILD}|g" ~/.bashrc
 
 
 

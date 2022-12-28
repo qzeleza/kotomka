@@ -30,6 +30,7 @@ SEP=
 
 DEV_NAME_PATH=.kotomka
 PATH_PREFIX="../."
+DEV_CONFIG_NAME=build.conf
 DEV_CONFIG_FILE="../../${DEV_CONFIG_NAME}"
 
 
@@ -131,13 +132,10 @@ reset_data(){
 #  Получаем список архитектур для которых ведется разработка.
 #  в соответствии с правилами указанными в DEV_CONFIG_FILE
 #-------------------------------------------------------------------------------
-arch_list(){
+get_arch_list(){
 
     cat < "${DEV_CONFIG_FILE}" \
-        | grep -v '#' |grep -E "ARCH_.*_ROUTER" \
-        | grep -v 'NO' | sed 's/ARCH_\(.*\)_ROUTER_IP.*/\1/' \
-        | tr "[:upper:]" "[:lower:]" | sed 's/[_]/-/1; s/_/./1'
-
+        | grep -v '#' | sed -n "s|ARCH_LIST=\"\(.*\)\"$|\1|p"
 }
 
 
@@ -145,7 +143,6 @@ arch_list(){
 #  Создаем файл манифеста для заданного типа языка разработки
 #-------------------------------------------------------------------------------
 prepare_makefile(){
-set -x
 
     app_router_dir=$(escape "/opt${APPS_ROOT}/${APP_NAME}")
     github_url=$(escape "https://github.com/${GITHUB_ACCOUNT_NAME}/${APP_NAME}")
@@ -215,14 +212,19 @@ set_dev_language(){
     mainfiles="${mainfile_path}/main.*"
     rm -f "${makefile}" "${mainfiles}"
 
-    if [ "${DEVELOP_EXT}" = ccc ] ; then ext=${DEVELOP_EXT:0:1}; else ext=${DEVELOP_EXT}; fi
-
     case ${DEVELOP_EXT} in
-        cpp|CPP|ccc|CCC)
+        cpp|CPP|срр|СРР)
             cp -f "../templates/code/make/Makefile.${DEVELOP_EXT}"      "${makefile}"
             sedi  "s|@APP_NAME|${APP_NAME}|g"                           "${makefile}"
-            ext_file=$(echo "${mainfiles}" | sed "s|main\.\*$|main.${ext}|")
+            ext_file=$(echo "${mainfiles}" | sed "s|main\.\*$|main.${DEVELOP_EXT}|")
             cp -f "../templates/code/src/main.${DEVELOP_EXT}"           "${ext_file}"
+            ;;
+
+        ccc|CCC|ссс|ССС)
+            cp -f "../templates/code/make/Makefile.c"      				"${makefile}"
+            sedi  "s|@APP_NAME|${APP_NAME}|g"               			"${makefile}"
+            ext_file=$(echo "${mainfiles}" | sed "s|main\.\*$|main.c|")
+            cp -f "../templates/code/src/main.c"           				"${ext_file}"
             ;;
 
         BASH|bash)
@@ -266,7 +268,6 @@ set_dev_language(){
 #  Проверяем соответствия флага языка разработки и текущий манифест для сборки пакета
 #-------------------------------------------------------------------------------
 check_dev_language(){
-set -x
 
     manifest_file=$(find ../.. -type f | grep "${DEV_COMPILE_NAME}/${arch}Makefile" | head -1)
 
@@ -349,33 +350,31 @@ get_container_id(){
 #-------------------------------------------------------------------------------
 #  Останавливаем и удаляем контейнер
 #-------------------------------------------------------------------------------
-purge_running_container(){
-	container_id_exited="${1}"
-	docker stop "${container_id_exited}"
-	docker rm "${container_id_exited}"
+purge_containers(){
+	container_id="${1}"
+	docker stop ${container_id}
+	docker rm ${container_id}
 }
 
-#-------------------------------------------------------------------------------
-#  Получаем номер порта для удаленных устройств из файла конфигурации
-#-------------------------------------------------------------------------------
-get_router_ip(){
-	arch=${1}
-	cat < "${DEV_CONFIG_FILE}" \
-		| grep -v '#' | grep -v 'NO' | grep -E "ARCH_.*_ROUTER" \
-		| grep -i "${arch}" \
-		| cut -d'=' -f2
-}
 
 #-------------------------------------------------------------------------------
-#  Получаем номер порта для удаленных устройств из файла конфигурации
+#  Запускаем в случае, если при запуске контейнера произошла ошибка
 #-------------------------------------------------------------------------------
-get_router_port(){
-	cat < "${DEV_CONFIG_FILE}" \
-		| grep -v '#' \
-		| grep -E "ROUTERS_PORT" \
-		| cut -d'=' -f2
-}
+run_when_error(){
+	container_id_or_name=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
+	mess=$(echo "${2}" | tr "[:lower:]" "[:upper:]")
+	error_tag="${RED}ОШИБКА${NOCL}"
 
+	show_line;
+	echo -e "${error_tag} ${BLUE}${mess}${NOCL}"
+	show_line
+	docker logs "${1}" --details --tail 50
+	purge_containers "${1}" &>/dev/null
+	show_line
+	echo -e "${error_tag} ${PREF}${BLUE}КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}${NOCL}"
+	show_line
+	echo
+}
 #-------------------------------------------------------------------------------
 #  Запускаем Docker exec с параметрами
 #   $1 - container_id_exited
@@ -389,21 +388,26 @@ docker_exec(){
     script_to_run=${2};
     root=${3};
     arch_build=${4}
-	router_ip=$(get_router_ip "${arch_build//-/_}")
 
-    if [ "${root}" = root ]; then user="--user root:root"; else user="--user ${USER}:${GROUP}"; fi
+    if [ "${root}" = root ]; then user="root:root"; else user="${USER}:${GROUP}"; fi
+    if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; fi
     docker exec \
-			--interactive --tty \
+			--interactive --tty  \
 			--workdir "${WORK_PATH_IN_CONTAINER}" \
-			--env ROUTER_IP="$(get_router_ip "${arch_build//-/_}")" \
-			--env PORT="$(get_router_port)" \
+			--env ROUTER_LIST="${ROUTER_LIST}" \
 			--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
 			--env ROOT_PATH="${DEV_ROOT_PATH//.\//}" \
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
-           	--env ARCH_BUILD="${arch_build}" ${user} \
-		   	--env IPK_PATH="${DEV_IPK_NAME}" \
-			"${container_id_exited}" /bin/bash ${script_to_run}
+           	--env ARCH_BUILD="${arch_build}" \
+           	--env IPK_PATH="${DEV_IPK_NAME}" \
+           	--user "${user}" \
+           	 "${container_id_exited}" /bin/bash ${script_to_run} || {
+           	 	container_name=$(docker ps -a -f id=${container_id_exited} --format "{{.Names}}")
+           	 	error="${PREF}В процессе сборки пакета возникли ошибки в контейнере ${container_name}"
+				run_when_error "${container_name}" "${error}!"
+               	exit 1
+        }
 }
 
 #-------------------------------------------------------------------------------
@@ -416,30 +420,29 @@ docker_run(){
 
     script_to_run=${1};
     container_name=${2};
-    arch=${3}
+    arch_build=${3}
     user=${4}
     context=$(dirname "$(dirname "$(pwd)")")
 
-    if [ -n "${container_name}" ] ; then name_cnt="--name ${container_name}"; else name_cnt=""; fi
+    if [ -n "${container_name}" ] ; then name_container="--name ${container_name}"; else name_container=""; fi
 
     docker run \
            	--interactive --tty \
            	--workdir "${WORK_PATH_IN_CONTAINER}" \
-			--env ROUTER_IP="$(get_router_ip "${arch_build//-/_}")" \
-			--env PORT="$(get_router_port)" \
-           	--env ARCH_BUILD="${arch}" \
+			--env ROUTER_LIST="${ROUTER_LIST}" \
+           	--env ARCH_BUILD="${arch_build}" \
            	--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
 			--env ROOT_PATH="${DEV_ROOT_PATH//.\//}" \
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
-		   	--env IPK_PATH="${DEV_ROOT_PATH}/${DEV_IPK_NAME}" \
+		   	--env IPK_PATH="${DEV_IPK_NAME}" \
            	--user "${user}" \
-           	${name_cnt} \
+           	${name_container} \
            	--mount type=bind,src="${context}",dst="${APPS_ROOT}"/"${APP_NAME}" \
            	"$(get_image_id)" /bin/bash ${script_to_run} || {
-               show_line;
-               echo "${PREF}В процессе сборки пакета возникли ошибки в контейнере ${container_name} !"
-               exit 1
+        		error="${PREF}В процессе сборки пакета возникли ошибки в контейнере ${container_name}"
+				run_when_error "${container_name}" "${error}!"
+               	exit 1
            }
 }
 
@@ -479,16 +482,12 @@ connect_when_stopped(){
 
     [ "${run_with_root}" = yes ] && _user=root
     echo "${_user}::Контейнер разработки '${container_name}' смонтирован, но остановлен."
-    echo -n "${_user}::Запускаем контейнер и производим подключение к нему..."
-    docker start "${container_id_exited}"
+    echo "${_user}::Запускаем контейнер и производим подключение к нему..."
+    docker start "${container_id_exited}" &> /dev/null
     show_line
 
     docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
-    #; then
-    #	docker stop "${container_id_exited}"
-    #	docker rm "${container_id_exited}"
-    #	connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${arch}" "${container_name}"
-    #fi
+
 }
 
 #-------------------------------------------------------------------------------
@@ -510,12 +509,16 @@ connect_when_not_mounted(){
     [ -z "${script_to_run}" ] && [ "${run_with_root}" = yes ] && user_group_id="root:root";
 
     echo "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${container_name}'"
-    #	Если контейнер запущен или просто собран - удаляем его (так, как там могут быть ошибки)
-    container_id_exited=$(docker ps -aq --filter ancestor="${IMAGE_NAME}" --filter status=exited )
+    show_line
+
+    container_id_exited=$(docker ps -aq --filter name="${container_name}" --filter status=exited )
+
     if [ -n "${container_id_exited}" ] ; then
+    	#    Запускаем остановленный контейнер
         docker start "${container_name}" &> /dev/null
         docker_exec "${container_id_exited}" "${script_to_run}" "" "${arch}"
     else
+#    	а если контейнера нет - то создаем его и запускаем
         docker_run "${script_to_run}" "${container_name}" "${arch}" "${user_group_id}"
     fi
 }
@@ -544,8 +547,8 @@ build_image(){
         echo "${PREF}Docker-образ собран без ошибок."
 
     else
-        show_line;
-        echo "${PREF}В процессе сборки Docker-образа возникли ошибки!"
+    	error="${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
+    	run_when_error "${IMAGE_NAME}" "${error}"
         exit 1
     fi
     show_line
@@ -562,8 +565,7 @@ rebuild_image(){
 
     container_id_exited=$(docker ps --filter ancestor="${IMAGE_NAME}" -q)
     if [ -n "${container_id_exited}" ] ; then
-        docker stop "${container_id_exited}" &>/dev/null
-        docker rm "${container_id_exited}"   &>/dev/null
+    	purge_containers "${container_id_exited}" &>/dev/null
     else
         container_id_exited=$(docker ps -a --filter ancestor="${IMAGE_NAME}" -q)
         [ -n "${container_id_exited}" ] && docker rm ${container_id_exited} &> /dev/null
@@ -586,13 +588,13 @@ container_run_to_make(){
     if [ "${run_with_root}" = yes ]; then _user=root; else _user=${USER}; fi
     container_id_up=$(docker ps -q --filter name="${container_name}")
     if [ -n "${container_id_up}" ]; then
-        connect_when_run "${script_to_run}" "${run_with_root}" "${container_id_up}"  "${arch}" "${container_name}"
+        connect_when_run "${script_to_run}" "${run_with_root}" "${container_id_up}" "${arch}" "${container_name}"
     else
         container_id_down=$(docker ps -qa  --filter name="${container_name}" --filter status=exited)
         if [ -n "${container_id_down}" ]; then
             connect_when_stopped "${script_to_run}" "${run_with_root}" "${container_id_down}" "${arch}" "${container_name}"
         else
-            if get_image_id; then
+            if get_image_id &>/dev/null ; then
                 connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${arch}" "${container_name}"
             else
                 build_image && {
@@ -607,13 +609,54 @@ container_run_to_make(){
 }
 
 #-------------------------------------------------------------------------------
+# Отображаем меню с запросом об архитектуре сборки
+#-------------------------------------------------------------------------------
+ask_arch_to_run(){
+
+	list_arch=${1}
+	script_to_run=${2}
+	count=0; choice=${3}
+	extra_menu_pos="Все\tархитектуры"
+
+	list_arch_menu=${list_arch};
+	[ -n "${script_to_run}" ] && list_arch_menu="${list_arch} ${extra_menu_pos}"
+	echo -e "Доступные ${BLUE}архитектуры${NOCL} для сборки:"
+	show_line
+
+	for _arch_ in ${list_arch_menu} ; do
+		count=$((count+1))
+		echo -e " ${count}. ${BLUE}${_arch_}${NOCL}"
+	done
+	show_line
+	read_choice "Выберите номер позиции из списка: " "${count}" choice
+}
+
+
+#-------------------------------------------------------------------------------
+# Печатаем заголовок для очередной сборки архитектуры
+#-------------------------------------------------------------------------------
+print_header(){
+	arch=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
+
+#	show_line
+	echo ""
+	echo ""
+	echo ""
+	echo -e "		СОБИРАЕМ ДЛЯ АРХИТЕКТУРЫ ${GREEN}${arch}${NOCL}"
+	echo ""
+	echo ""
+	echo ""
+	show_line
+}
+
+#-------------------------------------------------------------------------------
 # Подключаемся к контейнеру для сборки приложения в нем
 #-------------------------------------------------------------------------------
 manager_container_to_make(){
-set -x
+
 	script_to_run="${1}"
 	run_with_root="${2:-no}"
-	all_arch_run=${3}
+	arch_to_run=${3}
 	count=0; choice=''
 	extra_menu_pos="Все\tархитектуры"
 
@@ -624,42 +667,53 @@ set -x
             exit 1
         }
     fi
+#    если язык разработки Shell
     if [[ "${APPS_LANGUAGE}" =~ BASH|bash|Bash|sh|SH|Sh ]] ; then
         container_run_to_make "${script_to_run}" "${run_with_root}" "$(get_container_name "all")" "all"
     else
-
-    	list_arch="$(arch_list)"
-        list_arch_menu=${list_arch}; [ -n "${script_to_run}" ] && list_arch_menu="${list_arch} ${extra_menu_pos}"
-
-        if [ -z "${all_arch_run}" ]; then
-            echo -e "Доступные ${BLUE}архитектуры${NOCL} для сборки:"
-            show_line
-
-            for _arch_ in ${list_arch_menu} ; do
-                count=$((count+1))
-                echo -e " ${count}. ${BLUE}${_arch_}${NOCL}"
-            done
-            show_line
-            read_choice "Выберите номер позиции из списка: " "${count}" choice
+#		если язык разработки Си или С++
+    	list_arch="$(get_arch_list)"
+		list_size=$(echo "${list_arch}" | grep -cE '^[a-zA-Z]')
+        if [ -z "${arch_to_run}" ]; then
+#        	если не задана архитектура сборки - запрашиваем ее
+            ask_arch_to_run "${list_arch}" "${script_to_run}" choice
         else
-            choice=${count}
+        	if [ "${arch_to_run}" = all ]; then
+#        		если архитектура - all
+				choice=$(( list_size + 1))
+        	else
+#        		если указана в аргументах конкретная архитектура
+				choice=$(echo "${list_arch}" | grep -n "${arch_to_run}" | head -1 | cut -d':' -f1)
+				if [ -z "${choice}" ] ; then
+					echo -e "${RED}Не верно указана архитектура для сборки!${NOCL}"
+					show_line
+					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
+				fi
+			fi
         fi
 
         if [ "${choice}" = q ] ; then exit 1;
-        elif [ "${choice}" = ${count} ] && [ -n "${script_to_run}" ]; then
-#       в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
-            for _arch in ${list_arch}; do
-                container_run_to_make "${script_to_run}" "${run_with_root}" "${_arch}"
-#                docker stop "$(get_container_name "${_arch}")"
-                show_line
-            done
         else
-        	arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
-        	container_run_to_make "${script_to_run}" "${run_with_root}" "${arch}"
+
+        	if [ "${choice}" -gt "${list_size}" ] && [ -n "${script_to_run}" ]; then
+        		num=1;
+	#       	в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
+				for _arch in ${list_arch}; do
+					[ "${list_size}" -ge "${num}" ] && print_header "${_arch}"
+					container_run_to_make "${script_to_run}" "${run_with_root}" "${_arch}"
+					[ "${list_size}" -eq "${num}" ] || show_line
+					num=$((num + 1))
+				done
+
+			else
+				arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
+				print_header "${arch}"
+				container_run_to_make "${script_to_run}" "${run_with_root}" "${arch}"
+			fi
 		fi
     fi
     show_line
-set +x
+
 }
 
 #-------------------------------------------------------------------------------
@@ -722,13 +776,17 @@ show_help(){
     show_line
     echo "build    [-bl] - сборка образа и последующий запуск сборки пакета"
     echo "make     [-mk] - сборка пакета и копирование его на роутер"
-    echo "make all       - сборка пакета и копирование его на роутер для всех указанных архитектур"
-    echo "                 в файле конфигурации '${DEV_CONFIG_NAME}'."
+    echo "make <arch>    - сборка пакета и копирование его на роутер для указанной/ых архитектур,"
+    echo "                 где arch может принимать следующие значения: ."
+    echo "                 all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
+    echo "                 aarch64 - для ARCH64 архитектуры, "
+    echo "                 mips - для MIPS архитектуры, "
+    echo "                 mipsel - для MIPSEL архитектуры."
     echo "make ver       - отображаем текущую версию собираемого пакета"
-    echo "make ver <N-stage-rel> - устанавливаем версию собираемого пакета, где"
-    echo "                         N - номер версии, например 1.0.12"
-    echo "                         stage - стадия разработки [alpha, betta, preview]"
-    echo "                         rel - выпускаемый номер релиза, например 01"
+    echo "make ver <N>   - устанавливаем версию собираемого пакета, где номер в формате <N-stage-rel>"
+    echo "                 N - номер версии, например 1.0.12"
+    echo "                 stage - стадия разработки [alpha, betta, preview]"
+    echo "                 rel - выпускаемый номер релиза, например 01"
 
     echo "rebuild  [-rb] - Удаляем готовый образ и собираем его заново с последующим запуском сборки пакета"
     echo "copy     [-cp] - копирование уже собранного пакета на роутер"
@@ -762,6 +820,7 @@ else
     [[ "${args}" =~ rebuild|-rb ]] && reset_data
     check_dev_language
 fi
+
 case "${1}" in
 	term|-tr )   	        manager_container_to_make "" ;;
 	root|-rt) 		        manager_container_to_make "" "yes" ;;
@@ -770,15 +829,15 @@ case "${1}" in
 	    case  "${mk_arg}" in
 	        ver* )          package_version_set "$(echo "${mk_arg//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
 	        all  )          manager_container_to_make "${SCRIPT_TO_MAKE}" "" "all" ;;
-	        *    )          manager_container_to_make "${SCRIPT_TO_MAKE}" ""  ;;
+	        *    )          manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${mk_arg}" ;;
 	    esac
 	    ;;
 	copy|-cp )  	        manager_container_to_make "${SCRIPT_TO_COPY}" ;;
     test|-ts )  	        manager_container_to_make "${SCRIPT_TO_TEST}" ;;
     rebuild|-rb)            rebuild_image "${SCRIPT_TO_MAKE}" ;;
     help|-h|--help)         show_help ;;
-	*)                      echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}"
-                            show_help ;;
+	*)
+							echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}";
+                            show_help
+    ;;
 esac
-
-

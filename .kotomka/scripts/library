@@ -21,9 +21,9 @@
 # прочтение и неукоснительное соблюдение всех, без исключения,
 # статей, лицензии Apache License 2.0 по вышеуказанным ссылкам.
 #-------------------------------------------------------------------------------
-DEV_CONFIG_NAME=build.conf
+
 DEV_MANIFEST_DIR_NAME=Makefiles
-DEV_CONFIG_FILE="${1}"/"${DEV_CONFIG_NAME}"
+DEV_CONFIG_FILE="${1}/build.conf"
 . "${DEV_CONFIG_FILE}"
 set -e
 
@@ -70,7 +70,7 @@ read_ynq() {
 # Печатаем ответ из консоли Y/N/Q
 # 	 $1 - заголовок для запроса
 # 	 $2 - максимальное число позиций в списке
-# 	 $3- переменная в которой возвращается результат
+# 	 $3 - переменная в которой возвращается результат
 #-------------------------------------------------------------------------------
 read_choice(){
 
@@ -181,24 +181,14 @@ get_key_file(){
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
-# Копируем публичный ключ на роутер
-#-------------------------------------------------------------------------------
-copy_ssh_keys_to_router(){
-	# если ключи отсутствуют на NAS
-	echo "${PREF}Копируем ключи на роутер ${ROUTER_IP} порт ${PORT}..."
-	ssh -p "${PORT}" "root@${ROUTER_IP}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys"
-	show_line
-}
-
-
-#-------------------------------------------------------------------------------
-# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим удаление и установку пакета
 #-------------------------------------------------------------------------------
 run_reinstalation_on_router(){
-	ssh -p "${PORT}" "root@${ROUTER_IP}" 'opkg remove '"${APP_NAME}"
+	dev_ip=${1}; dev_port=${2}
+
+	ssh -p "${dev_port}" "root@${dev_ip}" 'opkg remove '"${APP_NAME}"
 	cmd='[ -d /opt/packages ] || mkdir /opt/packages; opkg install /opt/packages/'"$(get_ipk_package_name)"
-	ssh -p "${PORT}" "root@${ROUTER_IP}" "${cmd}" #<<< 2
+	ssh -p "${dev_port}" "root@${dev_ip}" "${cmd}" #<<< 2
 }
 
 #-------------------------------------------------------------------------------========================================
@@ -232,28 +222,39 @@ get_key_file(){
 # Копируем публичный ключ на роутер
 #-------------------------------------------------------------------------------
 copy_ssh_keys_to_router(){
+	dev_ip=${1}; dev_port=${2}
+
 	# если ключи отсутствуют на NAS
-	echo "${PREF}Копируем ключи на роутер ${ROUTER_IP} порт ${PORT}..."
-	ssh -p "${PORT}" "root@${ROUTER_IP}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys"
+	echo "${PREF}Копируем ключи на роутер ${dev_ip} порт ${dev_port}..."
+	ssh -p "${dev_port}" "root@${dev_ip}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys"
 	show_line
 }
+
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим копирование собранного пакета на роутер
 #-------------------------------------------------------------------------------
 copy_app_to_router(){
+	dev_ip=${1}; dev_port=${2}
 
-# 	Проверяем есть ли ключ на роутере
-	docker_key=$(cat < "$(get_key_file)")
-	ssh -p "${PORT}" "root@${ROUTER_IP}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" \
-	|| copy_ssh_keys_to_router
 	echo "${PREF}Загрузка пакета на роутер и его последующая установка..."
 	show_line
-	ssh -p "${PORT}" "root@${ROUTER_IP}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
+	ssh -p "${dev_port}" "root@${dev_ip}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
 	app_tar_name=$(get_ipk_package_name)
-	ssh -p "${PORT}" "root@${ROUTER_IP}" 'rm -f '"/opt/packages/${app_tar_name}" #&> /dev/null
-	scp -P "${PORT}" "${app_tar_name}" "root@${ROUTER_IP}:/opt/packages/${app_tar_name}"
+	ssh -p "${dev_port}" "root@${dev_ip}" 'rm -f '"/opt/packages/${app_tar_name}" #&> /dev/null
+	scp -P "${dev_port}" "${app_tar_name}" "root@${dev_ip}:/opt/packages/${app_tar_name}"
+}
+
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# Получаем архитектуру текущего устройства
+#-------------------------------------------------------------------------------
+get_device_arch(){
+	dev_ip=${1}; dev_port=${2}
+
+	cmd_get_arch='grep "arch" /opt/etc/entware_release | cut -f2 -d"="'
+	ssh -p "${dev_port}" "root@${dev_ip}" "${cmd_get_arch}"
 }
 
 #-------------------------------------------------------------------------------
@@ -296,26 +297,57 @@ time_diff(){
     echo "${DD}${HH}${MM} ${ss} сек."
 }
 
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+#
+# 	Копируем пакет на роутер и производим его установку
+#
+# 	$1 - в случае значения ask - выводим вопрос о проведении тестов,
+#	   		 при иных значениях - тесты пропускаем
+#
+#-------------------------------------------------------------------------------
 copy_and_install_package(){
 
     tests_ask=${1:-yes}
-    # проверяем на доступность ip роутера
-    if is_ip_or_host_alive "${ROUTER_IP}"; then
-        # копируем собранный пакет на роутер
-        copy_app_to_router
-        run_reinstalation_on_router
-        # Запускаем тесты
-        case "${tests_ask}" in
-            YES|Yes|yes|y ) run_tests ;;
-            ASK|Ask|ask|a )
-                answer=''; read_ynq "Запустить исполнение тестов? " answer
-                [ "${answer}" = y ] run_tests ;;
-            * ) ;;
-        esac
 
-    else
-        echo -e "${RED}${PREF}IP адрес устройства '${ROUTER_IP}' - НЕ доступен!${NOCL}"
-        echo -e "${RED}${PREF}Установку и тестирование пакета пропускаем!${NOCL}"
-    fi
+    for dev in ${ROUTER_LIST} ; do
+#    	получаем адрес и порт (по умолчанию - 22)
+    	dev_ip=$(echo "${dev}" | cut -d':' -f1 )
+    	dev_port=$(echo "${dev}" | cut -d':' -f2)
+    	[ -z "${dev_port}" ] && dev_port=22
+
+		# проверяем на доступность ip роутера
+		if is_ip_or_host_alive "${dev_ip}"; then
+
+			# 	Проверяем есть ли ключ на роутере
+			docker_key=$(cat < "$(get_key_file)")
+			ssh -p "${dev_port}" "root@${dev_ip}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" \
+				|| copy_ssh_keys_to_router "${dev_ip}" "${dev_port}"
+
+	#    	текущая архитектура на устройстве
+			dev_arch=$(get_device_arch "${dev_ip}" "${dev_port}")
+	#    	текущая архитектура в контейнере (просто название без версии )
+			container_arch=$(echo "${ARCH_BUILD}" | sed -n 's|^\([a-zA-Z]\{4,\}\)[0-9]\{0,2\}\(-[0-9]\{1,2\}.[0-9]\{1,2\}\).*|\1|p')
+
+			if [ "${container_arch}" = "${dev_arch}" ]; then
+
+				# копируем собранный пакет на роутер
+				copy_app_to_router "${dev_ip}" "${dev_port}"
+#				запускаем установку пакета
+				run_reinstalation_on_router "${dev_ip}" "${dev_port}"
+
+				# Запускаем тесты
+				case "${tests_ask}" in
+					YES|Yes|yes|y ) run_tests ;;
+					ASK|Ask|ask|a )
+						answer=''; read_ynq "Запустить исполнение тестов? " answer
+						[ "${answer}" = y ] run_tests ;;
+					* ) ;;
+				esac
+			fi
+		else
+			echo -e "${RED}${PREF}IP адрес устройства '${dev_ip}' - НЕ доступен!${NOCL}"
+		fi
+	done
 
 }

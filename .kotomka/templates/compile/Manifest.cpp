@@ -28,14 +28,13 @@ endef
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
-	cp -rf @SOURCE_DIR/code/. $(PKG_BUILD_DIR)
+	cp -rf @SOURCE_DIR/code/src/. $(PKG_BUILD_DIR)
 	$(Build/Patch)
 endef
 
 define Build/Configure
 endef
 
-#mipsel-openwrt-linux-gnu-g++
 define Build/Compile
 	$(MAKE) -C $(PKG_BUILD_DIR) CC="$(TARGET_CXX)" CFLAGS="$(TARGET_CXXFLAGS) -Wall" LDFLAGS="$(TARGET_LDFLAGS)"
 endef

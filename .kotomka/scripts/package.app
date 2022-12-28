@@ -24,7 +24,6 @@
 
 PREF='>> '
 set -e
-set -x
 
 BASEDIR=$(dirname "$(dirname "${0}")")
 . "${BASEDIR}/scripts/library" "$(dirname "${BASEDIR}")"
@@ -43,8 +42,7 @@ APPS_PATH=${APPS_ROOT}/${APP_NAME}
 COMPILE_PATH=${APPS_PATH}/${ROOT_PATH}/${COMPILE_NAME}
 ENTWARE_PATH=${APPS_ROOT}/entware
 BUILD_CONFIG="${ENTWARE_PATH}/.config"
-PREV_PKGARCH=''
-
+PACKAGES_PATH="${APPS_PATH}/${ROOT_PATH}/${IPK_PATH}"
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
@@ -54,10 +52,10 @@ copy_code_files(){
 	# копируем данные кода в папку для компиляции
 	build_files_path=${APP_MAKE_BUILD_PATH}/files
 	rm -rf "${build_files_path}"
-	mkdir_when_not "${build_files_path}/opt"
-    cp -rf "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}/." "${build_files_path}/opt"
-    mkdir_when_not "${build_files_path}/src"
-    cp -rf "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}/." "${build_files_path}/src"
+	mkdir_when_not "${build_files_path}/${OPT_PATH}"
+    cp -rf "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}/." "${build_files_path}/${OPT_PATH}"
+    mkdir_when_not "${build_files_path}/${SRC_PATH}"
+    cp -rf "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}/." "${build_files_path}"
 }
 
 
@@ -98,7 +96,7 @@ create_makefile(){
 
     make_file="${COMPILE_PATH}/Makefile"
 
-    PREV_PKGARCH=$(cat < "${make_file}" | sed -n 's/PKGARCH:=\(.*\)$/\1/p;' | sed 's/[ \t]//g')
+#    PREV_PKGARCH=$(cat < "${make_file}" | sed -n 's/PKGARCH:=\(.*\)$/\1/p;' | sed 's/[ \t]//g')
     section_list=$(cat < "${DEV_CONFIG_FILE}" | grep -v '^#' \
                     | grep "SECTION_" | sed 's|SECTION_\(.*\)=.*$|\1|g' \
                     | tr "[:upper:]" "[:lower:]")
@@ -123,19 +121,15 @@ check_arch(){
 	configs_path="${COMPILE_PATH}"
     mkdir_when_not "${configs_path}"
 
-    if [ "${PREV_PKGARCH}" = "${ARCH_BUILD}" ]; then
-		if [ -f "${configs_path}/${ARCH_BUILD}.config" ]; then
-            cp -f  "${configs_path}/${ARCH_BUILD}.config" "${BUILD_CONFIG}"
-        fi
+    if [ -f "${BUILD_CONFIG}" ]; then
+#    	архитектура совпадает от предыдущей сборки?
+    	if ! cat < "${BUILD_CONFIG}" | grep -E "CONFIG_TARGET_BOARD.*${ARCH_BUILD}" | grep -qv '#'; then
+    		cp "$(ls "${APPS_ROOT}"/entware/configs/"${ARCH_BUILD}".config)" "${BUILD_CONFIG}"
+    	fi
     else
-        # в случае отсутствия .config копируем его
-        if ! [ -f "${BUILD_CONFIG}" ]; then
-            cd "${ENTWARE_PATH}"
-            if ! [ "${PREV_PKGARCH}" = '@PKGARCH' ] ; then
-            	make dirclean; fi
-            cp "$(ls "${APPS_ROOT}"/entware/configs/"${ARCH_BUILD}".config)" "${BUILD_CONFIG}"
-        fi
+    	cp "$(ls "${APPS_ROOT}"/entware/configs/"${ARCH_BUILD}".config)" "${BUILD_CONFIG}"
     fi
+
 }
 
 
@@ -145,20 +139,21 @@ check_arch(){
 #-------------------------------------------------------------------------------
 do_package_make(){
 
-set -x
     deb=${1}
     cd "${ENTWARE_PATH}"
-#    rm -rf /apps/entware/tmp/info
 
     if ! grep -q "${APP_NAME}" "${BUILD_CONFIG}" ; then
     	make oldconfig <<< m
-    	make tools/install ${deb}
-    	make toolchain/install ${deb}
-#        rm "${BUILD_CONFIG}.old"
+    	make tools/install ${deb} || make clean; make tools/install -j1 V=sc
+    	make toolchain/install ${deb} || make toolchain/install -j1 V=sc
     fi
-    make package/"${APP_NAME}"/compile ${deb}
+    make package/"${APP_NAME}"/compile ${deb} || make package/"${APP_NAME}"/compile -j1 V=sc
 }
+# cd /apps/entware && make menuconfig
+# cd /apps/entware && ll /apps/entware/packages/utils/kotomka/ &&  cat /apps/entware/packages/utils/kotomka/Makefile
+# &&  make package/kotomka/compile -j1 V=sc
 
+#
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
@@ -166,6 +161,7 @@ set -x
 # В случае необходимости устанавливаем флаг отладки в YES
 #-------------------------------------------------------------------------------
 main_run(){
+
 
 	# копируем данные кода в папку для компиляции
 	copy_code_files
@@ -177,29 +173,28 @@ main_run(){
 	# и в случае, если архитектуры разные - делаем очистку make dirclean
 	check_arch
 
+	echo -e "${PREF}${BLUE}Задействовано ${np} яд. процессора.${NOCL}"
+	echo -e "${PREF}${BLUE}Режим отладки: $([ "${DEBUG}" = YES ] && echo "ВКЛЮЧЕН" || echo "ОТКЛЮЧЕН")${NOCL}"
+	echo -e "${PREF}Makefile для ${GREEN}${ARCH_BUILD}${NOCL} успешно импортирован."
+	echo -e "${PREF}${BLUE}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}${NOCL}"
 	show_line
-	echo "${PREF}Задействовано ${np} яд. процессора."
-	echo "${PREF}Режим отладки: $([ "${DEBUG}" = YES ] && echo "ВКЛЮЧЕН" || echo "ОТКЛЮЧЕН")"
-	echo "${PREF}Makefile для ${ARCH_BUILD} успешно импортирован."
-	echo "${PREF}Собираем пакет ${APP_NAME} вер. ${FULL_VERSION}"
-	show_line
-	echo "${PREF}Сборка запущена: $(zdump EST-3)"; show_line
+	echo -e "${PREF}${BLUE}Сборка запущена: $(zdump EST-3)${NOCL}"; show_line
 
 	time_start=$(date +%s)
 	# Собираем пакет
 
-	do_package_make "${deb}" || make dirclean
+	do_package_make "${deb}" #|| make dirclean
 
 	# копируем собранный пакет в папку где хранятся все сборки
-	mkdir_when_not "${IPK_PATH}"
-	cp "$(get_ipk_package_file)" "${IPK_PATH}"
+	mkdir_when_not "${PACKAGES_PATH}" && cp "$(get_ipk_package_file)" "${PACKAGES_PATH}"
 
 	show_line
 	copy_and_install_package "ask";
 	show_line
 
 	time_end=$(date +%s)
-	echo "${PREF}Продолжительность сборки составила: $(time_diff "${time_start}" "${time_end}")"
+	echo -e "${PREF}${BLUE}Продолжительность сборки составила: $(time_diff "${time_start}" "${time_end}")${NOCL}"
 }
 
 main_run
+exit 0
