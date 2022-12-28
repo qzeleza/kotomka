@@ -110,7 +110,7 @@ WORK_PATH_IN_CONTAINER="${APPS_ROOT}/${APP_NAME}/${DEV_NAME_PATH}"
 #-------------------------------------------------------------------------------
 #  Формируем имя контейнера в зависимости от архитектуры процессора.
 #-------------------------------------------------------------------------------
-get_container_name()(echo "${APP_NAME}-${1}")
+get_container_name()(echo "${APP_NAME}-${1}" | tr "[:upper:]" "[:lower:]")
 
 
 #-------------------------------------------------------------------------------
@@ -135,7 +135,7 @@ reset_data(){
 get_arch_list(){
 
     cat < "${DEV_CONFIG_FILE}" \
-        | grep -v '#' | sed -n "s|ARCH_LIST=\"\(.*\)\"$|\1|p"
+        | grep -v '#' | sed -n "s|ARCH_LIST=\"\(.*\)\"$|\1|p" | tr ' ' '\n'
 }
 
 
@@ -367,10 +367,10 @@ run_when_error(){
 
 	show_line;
 	echo -e "${error_tag} ${BLUE}${mess}${NOCL}"
-	show_line
+	print_line_sim '-' 1
 	docker logs "${1}" --details --tail 50
 	purge_containers "${1}" &>/dev/null
-	show_line
+	print_line_sim '-' 1
 	echo -e "${error_tag} ${PREF}${BLUE}КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}${NOCL}"
 	show_line
 	echo
@@ -387,7 +387,7 @@ docker_exec(){
     container_id_exited=${1};
     script_to_run=${2};
     root=${3};
-    arch_build=${4}
+    arch_build=$(echo "${4}" | tr "[:upper:]" "[:lower:]")
 
     if [ "${root}" = root ]; then user="root:root"; else user="${USER}:${GROUP}"; fi
     if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; fi
@@ -420,7 +420,7 @@ docker_run(){
 
     script_to_run=${1};
     container_name=${2};
-    arch_build=${3}
+    arch_build=$(echo "${3}" | tr "[:upper:]" "[:lower:]")
     user=${4}
     context=$(dirname "$(dirname "$(pwd)")")
 
@@ -461,9 +461,10 @@ connect_when_run(){
 
     [ "${run_with_root}" = yes ] && _user=root
 
-   	echo "${_user}::Контейнер разработки '${container_name}' запущен."
-    echo "${_user}::Производим подключение к контейнеру..."
-
+   	echo "${PREF}${_user}::Контейнер разработки '${container_name}' запущен."
+    echo "${PREF}${_user}::Производим подключение к контейнеру..."
+	echo "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${container_name}'"
+    show_line
     docker_exec "${container_id_running}" "${script_to_run}" "${_user}" "${arch}"
 }
 
@@ -481,9 +482,11 @@ connect_when_stopped(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo "${_user}::Контейнер разработки '${container_name}' смонтирован, но остановлен."
-    echo "${_user}::Запускаем контейнер и производим подключение к нему..."
+    echo "${PREF}${_user}::Контейнер разработки '${container_name}' смонтирован, но остановлен."
+    echo "${PREF}${_user}::Запускаем контейнер и производим подключение к нему..."
     docker start "${container_id_exited}" &> /dev/null
+
+	echo "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${container_name}'"
     show_line
 
     docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
@@ -502,8 +505,8 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo "${_user}::Контейнер '${container_name}' не смонтирован!"
-    echo "${_user}::Производим запуск и монтирование контейнера и подключаемся к нему..."
+    echo "${PREF}${_user}::Контейнер '${container_name}' не смонтирован!"
+    echo "${PREF}${_user}::Производим запуск и монтирование контейнера и подключаемся к нему..."
 
     user_group_id="${U_ID}:${G_ID}"
     [ -z "${script_to_run}" ] && [ "${run_with_root}" = yes ] && user_group_id="root:root";
@@ -673,7 +676,7 @@ manager_container_to_make(){
     else
 #		если язык разработки Си или С++
     	list_arch="$(get_arch_list)"
-		list_size=$(echo "${list_arch}" | grep -cE '^[a-zA-Z]')
+		list_size=$(echo "${list_arch}" | grep -cE '^[a-zA-Z]' | tr "[:upper:]" "[:lower:]")
         if [ -z "${arch_to_run}" ]; then
 #        	если не задана архитектура сборки - запрашиваем ее
             ask_arch_to_run "${list_arch}" "${script_to_run}" choice
@@ -699,7 +702,7 @@ manager_container_to_make(){
         		num=1;
 	#       	в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
 				for _arch in ${list_arch}; do
-					[ "${list_size}" -ge "${num}" ] && print_header "${_arch}"
+					[ "${num}" -le "${list_size}" ] && print_header "${_arch}"
 					container_run_to_make "${script_to_run}" "${run_with_root}" "${_arch}"
 					[ "${list_size}" -eq "${num}" ] || show_line
 					num=$((num + 1))
@@ -791,7 +794,19 @@ show_help(){
     echo "rebuild  [-rb] - Удаляем готовый образ и собираем его заново с последующим запуском сборки пакета"
     echo "copy     [-cp] - копирование уже собранного пакета на роутер"
     echo "term     [-tr] - подключение к контейнеру без исполнения скриптов под пользователем '${USER}'."
+	echo "term <arch>    - подключение к контейнеру под пользователем '${USER}' для указанной/ых архитектур,"
+	echo "                 где arch может принимать следующие значения: ."
+    echo "                 all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
+    echo "                 aarch64 - для ARCH64 архитектуры, "
+    echo "                 mips - для MIPS архитектуры, "
+    echo "                 mipsel - для MIPSEL архитектуры."
     echo "root     [-rt] - подключение к контейнеру без исполнения скриптов под пользователем 'root'"
+	echo "root <arch>    - подключение к контейнеру под пользователем 'root' для указанной/ых архитектур,"
+	echo "                 где arch может принимать следующие значения: ."
+    echo "                 all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
+    echo "                 aarch64 - для ARCH64 архитектуры, "
+    echo "                 mips - для MIPS архитектуры, "
+    echo "                 mipsel - для MIPSEL архитектуры."
     echo "debug    [-vb] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
     echo "test     [-ts] - запуск тестов на удаленном устройстве. "
     echo "init     [-in] - cбрасываем в первоначальное состояние пакет до установки языка разработки."
@@ -821,15 +836,16 @@ else
     check_dev_language
 fi
 
-case "${1}" in
-	term|-tr )   	        manager_container_to_make "" ;;
-	root|-rt) 		        manager_container_to_make "" "yes" ;;
+arg_1=$(echo "${1}" | cut -d' ' -f1)
+arg_2=$(echo "${1}" | cut -d' ' -f2)
+
+case "${arg_1}" in
+	term|-tr ) 	[ -n "${arg_2}" ] && manager_container_to_make "" "" "${arg_2}" ;;
+	root|-rt) 	[ -n "${arg_2}" ] && manager_container_to_make "" "yes" "${arg_2}" ;;
 	make*|-mk*|build*|-bl*)
-	    mk_arg=$(echo "${1}" | cut -d' ' -f2-)
-	    case  "${mk_arg}" in
-	        ver* )          package_version_set "$(echo "${mk_arg//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
-	        all  )          manager_container_to_make "${SCRIPT_TO_MAKE}" "" "all" ;;
-	        *    )          manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${mk_arg}" ;;
+	    case  "${arg_2}" in
+	        ver* )          package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
+	        *    )          manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${arg_2}" ;;
 	    esac
 	    ;;
 	copy|-cp )  	        manager_container_to_make "${SCRIPT_TO_COPY}" ;;

@@ -125,6 +125,8 @@ check_arch(){
 #    	архитектура совпадает от предыдущей сборки?
     	if ! cat < "${BUILD_CONFIG}" | grep -E "CONFIG_TARGET_BOARD.*${ARCH_BUILD}" | grep -qv '#'; then
     		cp "$(ls "${APPS_ROOT}"/entware/configs/"${ARCH_BUILD}".config)" "${BUILD_CONFIG}"
+    	else
+    		echo 'SUPPER!!!'
     	fi
     else
     	cp "$(ls "${APPS_ROOT}"/entware/configs/"${ARCH_BUILD}".config)" "${BUILD_CONFIG}"
@@ -141,13 +143,16 @@ do_package_make(){
 
     deb=${1}
     cd "${ENTWARE_PATH}"
-
+echo 1
     if ! grep -q "${APP_NAME}" "${BUILD_CONFIG}" ; then
+echo 2
     	make oldconfig <<< m
     	make tools/install ${deb} || make clean; make tools/install -j1 V=sc
     	make toolchain/install ${deb} || make toolchain/install -j1 V=sc
     fi
+echo 3
     make package/"${APP_NAME}"/compile ${deb} || make package/"${APP_NAME}"/compile -j1 V=sc
+echo 4
 }
 # cd /apps/entware && make menuconfig
 # cd /apps/entware && ll /apps/entware/packages/utils/kotomka/ &&  cat /apps/entware/packages/utils/kotomka/Makefile
@@ -161,7 +166,6 @@ do_package_make(){
 # В случае необходимости устанавливаем флаг отладки в YES
 #-------------------------------------------------------------------------------
 main_run(){
-
 
 	# копируем данные кода в папку для компиляции
 	copy_code_files
@@ -183,7 +187,7 @@ main_run(){
 	time_start=$(date +%s)
 	# Собираем пакет
 
-	do_package_make "${deb}" #|| make dirclean
+	do_package_make "${deb}"
 
 	# копируем собранный пакет в папку где хранятся все сборки
 	mkdir_when_not "${PACKAGES_PATH}" && cp "$(get_ipk_package_file)" "${PACKAGES_PATH}"
@@ -195,6 +199,6 @@ main_run(){
 	time_end=$(date +%s)
 	echo -e "${PREF}${BLUE}Продолжительность сборки составила: $(time_diff "${time_start}" "${time_end}")${NOCL}"
 }
-
 main_run
+
 exit 0
