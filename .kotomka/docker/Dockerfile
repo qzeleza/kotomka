@@ -13,8 +13,7 @@ RUN chmod 1777 /tmp \
     && groupadd --gid ${GID} ${USER}  \
     && useradd --create-home --uid ${UID} --gid ${GID} --shell /bin/bash ${USER}  \
     && apt-get update \
-    && apt-get install -y locales apt-utils \
-    && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8 \
+    && apt-get install -y locales apt-utils language-pack-ru \
     && apt-get update -qq \
     && apt-get install -y \
         libc6:i386 libncurses5:i386 libstdc++6:i386 \

@@ -365,11 +365,11 @@ run_when_error(){
 	mess=$(echo "${2}" | tr "[:lower:]" "[:upper:]")
 	error_tag="${RED}ОШИБКА${NOCL}"
 
-	show_line;
+#	show_line;
 	echo -e "${error_tag} ${BLUE}${mess}${NOCL}"
 	print_line_sim '-' 1
 	docker logs "${1}" --details --tail 50
-	purge_containers "${1}" &>/dev/null
+#	purge_containers "${1}" &>/dev/null
 	print_line_sim '-' 1
 	echo -e "${error_tag} ${PREF}${BLUE}КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}${NOCL}"
 	show_line
@@ -425,6 +425,7 @@ docker_run(){
     context=$(dirname "$(dirname "$(pwd)")")
 
     if [ -n "${container_name}" ] ; then name_container="--name ${container_name}"; else name_container=""; fi
+ 	if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; fi
 
     docker run \
            	--interactive --tty \
@@ -436,6 +437,7 @@ docker_run(){
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
 		   	--env IPK_PATH="${DEV_IPK_NAME}" \
+		   	--env TZ=Europe/Moscow \
            	--user "${user}" \
            	${name_container} \
            	--mount type=bind,src="${context}",dst="${APPS_ROOT}"/"${APP_NAME}" \
@@ -461,9 +463,9 @@ connect_when_run(){
 
     [ "${run_with_root}" = yes ] && _user=root
 
-   	echo "${PREF}${_user}::Контейнер разработки '${container_name}' запущен."
+   	echo -e "${PREF}${_user}::Контейнер разработки '${container_name}' ${BLUE}ЗАПУЩЕН${NOCL}."
     echo "${PREF}${_user}::Производим подключение к контейнеру..."
-	echo "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${container_name}'"
+	echo -e "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${GREEN}${container_name}${NOCL}'"
     show_line
     docker_exec "${container_id_running}" "${script_to_run}" "${_user}" "${arch}"
 }
@@ -482,11 +484,11 @@ connect_when_stopped(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo "${PREF}${_user}::Контейнер разработки '${container_name}' смонтирован, но остановлен."
+    echo -e "${PREF}${_user}::Контейнер разработки '${container_name}' смонтирован, но ${BLUE}ОСТАНОВЛЕН${NOCL}."
     echo "${PREF}${_user}::Запускаем контейнер и производим подключение к нему..."
-    docker start "${container_id_exited}" &> /dev/null
 
-	echo "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${container_name}'"
+    docker start "${container_id_exited}" &> /dev/null
+	echo -e "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${GREEN}${container_name}${NOCL}'"
     show_line
 
     docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
@@ -505,13 +507,13 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo "${PREF}${_user}::Контейнер '${container_name}' не смонтирован!"
+    echo -e "${PREF}${_user}::Контейнер '${container_name}' ${BLUE}НЕ СМОНТИРОВАН${NOCL}!"
     echo "${PREF}${_user}::Производим запуск и монтирование контейнера и подключаемся к нему..."
 
     user_group_id="${U_ID}:${G_ID}"
     [ -z "${script_to_run}" ] && [ "${run_with_root}" = yes ] && user_group_id="root:root";
 
-    echo "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${container_name}'"
+    echo -e "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${GREEN}${container_name}${NOCL}'"
     show_line
 
     container_id_exited=$(docker ps -aq --filter name="${container_name}" --filter status=exited )
@@ -531,7 +533,7 @@ connect_when_not_mounted(){
 #-------------------------------------------------------------------------------
 build_image(){
 
-    echo "${PREF}Запускаем сборку НОВОГО образа ${IMAGE_NAME}"
+    echo -e "${PREF}Запускаем сборку ${BLUE}НОВОГО${NOCL} образа ${IMAGE_NAME}"
     show_line
 
     context=$(dirname "$(pwd)")
@@ -543,6 +545,7 @@ build_image(){
         --build-arg GROUP="${GROUP}" \
         --build-arg APPS_ROOT="${APPS_ROOT}" \
         --build-arg APP_NAME="${APP_NAME}" \
+        --build-arg TZ=Europe/Moscow \
         --file "${DOCKER_FILE}" \
         "${context}/" ; then
 
@@ -587,7 +590,6 @@ container_run_to_make(){
     arch=${3}
     container_name="$(get_container_name "${arch}")"
 
-
     if [ "${run_with_root}" = yes ]; then _user=root; else _user=${USER}; fi
     container_id_up=$(docker ps -q --filter name="${container_name}")
     if [ -n "${container_id_up}" ]; then
@@ -623,7 +625,7 @@ ask_arch_to_run(){
 
 	list_arch_menu=${list_arch};
 	[ -n "${script_to_run}" ] && list_arch_menu="${list_arch} ${extra_menu_pos}"
-	echo -e "Доступные ${BLUE}архитектуры${NOCL} для сборки:"
+	echo -e "Доступные ${BLUE}архитектуры${NOCL} для сборки [Q/q - выход]:"
 	show_line
 
 	for _arch_ in ${list_arch_menu} ; do
@@ -676,30 +678,31 @@ manager_container_to_make(){
     else
 #		если язык разработки Си или С++
     	list_arch="$(get_arch_list)"
+#    	если указанная архитектура присутствует в списке
 		list_size=$(echo "${list_arch}" | grep -cE '^[a-zA-Z]' | tr "[:upper:]" "[:lower:]")
-        if [ -z "${arch_to_run}" ]; then
+		if [ -z "${arch_to_run}" ]; then
 #        	если не задана архитектура сборки - запрашиваем ее
-            ask_arch_to_run "${list_arch}" "${script_to_run}" choice
-        else
-        	if [ "${arch_to_run}" = all ]; then
+			ask_arch_to_run "${list_arch}" "${script_to_run}" choice
+		else
+			if [ "${arch_to_run}" = all ]; then
 #        		если архитектура - all
 				choice=$(( list_size + 1))
-        	else
+			else
 #        		если указана в аргументах конкретная архитектура
 				choice=$(echo "${list_arch}" | grep -n "${arch_to_run}" | head -1 | cut -d':' -f1)
 				if [ -z "${choice}" ] ; then
-					echo -e "${RED}Не верно указана архитектура для сборки!${NOCL}"
+					echo -e "${PREF}${RED}Не верно указана архитектура для сборки!${NOCL}"
 					show_line
 					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
 				fi
 			fi
-        fi
+		fi
 
-        if [ "${choice}" = q ] ; then exit 1;
-        else
+		if [ "${choice}" = q ] ; then exit 1;
+		else
 
-        	if [ "${choice}" -gt "${list_size}" ] && [ -n "${script_to_run}" ]; then
-        		num=1;
+			if [ "${choice}" -gt "${list_size}" ] && [ -n "${script_to_run}" ]; then
+				num=1;
 	#       	в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
 				for _arch in ${list_arch}; do
 					[ "${num}" -le "${list_size}" ] && print_header "${_arch}"
@@ -714,8 +717,9 @@ manager_container_to_make(){
 				container_run_to_make "${script_to_run}" "${run_with_root}" "${arch}"
 			fi
 		fi
+
     fi
-    show_line
+
 
 }
 
@@ -757,6 +761,29 @@ package_version_set(){
     show_line
 }
 
+remove_arch_container(){
+	arch_build=${1}
+	if [ "${arch_build}" ]; then
+	    if get_arch_list | grep -q "${arch_build}" ; then
+	        container_id=$(get_container_id "${APP_NAME}-${arch_build}*")
+	        if [ "${container_id}" ]; then
+	            purge_containers "${container_id}" &>/dev/null
+	        	echo -e "${PREF}${GREEN}Контейнер c архитектурой сборки '${arch_build}' успешно удален.${NOCL}"
+	        else
+	            echo -e "${PREF}${BLUE}Контейнер c архитектурой сборки '${arch_build}' не существует.${NOCL}"
+	        fi
+
+
+	    else
+	        echo -e "${PREF}${BLUE}Указанная архитектура сборки отсутствует.${NOCL}"
+	    fi
+
+	else
+		echo -e "${PREF}${RED}Не задана архитектура сборки для удаления!${NOCL}"
+	fi
+	show_line
+
+}
 
 #-------------------------------------------------------------------------------
 # Проверяем был ли в аргументах передан флаг отладки
@@ -851,6 +878,7 @@ case "${arg_1}" in
 	copy|-cp )  	        manager_container_to_make "${SCRIPT_TO_COPY}" ;;
     test|-ts )  	        manager_container_to_make "${SCRIPT_TO_TEST}" ;;
     rebuild|-rb)            rebuild_image "${SCRIPT_TO_MAKE}" ;;
+	remove|rm|del| -rm)			remove_arch_container "${arg_2}";;
     help|-h|--help)         show_help ;;
 	*)
 							echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}";

@@ -34,6 +34,7 @@ YELLOW="\033[33m";
 NOCL="\033[m";
 PREF='>> '
 APPS_ROOT=/apps
+
 #-------------------------------------------------------------------------------
 # Данные учетной записи от имени которой собираем пакет
 #-------------------------------------------------------------------------------
@@ -140,13 +141,6 @@ get_config_value(){
 # Получаем имя приложения из названия корневой папки
 #-------------------------------------------------------------------------------
 APP_NAME=$(echo "${BASEDIR}" | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-#-------------------------------------------------------------------------------
-# Получаем тип архитектуры процессора роутера
-#-------------------------------------------------------------------------------
-get_router_arch(){
-    cat < "${APPS_ROOT}/entware/package/utils/${APP_NAME}/Makefile" \
-    	| grep -v '#' | sed -n 's/\(^.*PKGARCH:=\)\(.*\)$/\2/p'
-}
 
 #-------------------------------------------------------------------------------
 # Получаем имя пакета для сборки
@@ -252,12 +246,14 @@ copy_ssh_keys_to_router(){
 copy_app_to_router(){
 	dev_ip=${1}; dev_port=${2}
 
-	echo "${PREF}Загрузка пакета на роутер и его последующая установка..."
+	echo "${PREF}Загружаем пакет на устройство с IP '${dev_ip}:${dev_port}' и производим установку..."
 	show_line
+#	создаем папку на устройстве для хранения упакованного пакета
 	ssh -p "${dev_port}" "root@${dev_ip}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
 	app_tar_name=$(get_ipk_package_name)
+#	удаляем предыдущий файл этой же версии пакета, если он там был и перемещаем его из контейнера на устройство
 	ssh -p "${dev_port}" "root@${dev_ip}" 'rm -f '"/opt/packages/${app_tar_name}" #&> /dev/null
-	scp -P "${dev_port}" "${app_tar_name}" "root@${dev_ip}:/opt/packages/${app_tar_name}"
+	scp -P "${dev_port}" "${PACKAGES_PATH}/${app_tar_name}" "root@${dev_ip}:/opt/packages/${app_tar_name}"
 }
 
 #-------------------------------------------------------------------------------
@@ -276,7 +272,7 @@ get_device_arch(){
 # Запускаем тесты на роутере из контейнера
 #-------------------------------------------------------------------------------
 run_tests(){
-    cd "${APPS_ROOT}/${APP_NAME}"/tests || exit 1
+    cd "${APPS_ROOT}/${APP_NAME}"/${}/${DEV_TESTS_NAME} || exit 1
     ./tests.run
 }
 
@@ -322,7 +318,7 @@ time_diff(){
 #-------------------------------------------------------------------------------
 copy_and_install_package(){
 
-    tests_ask=${1:-yes}
+    tests_ask=${1:-no}
 
     for dev in ${ROUTER_LIST} ; do
 #    	получаем адрес и порт (по умолчанию - 22)
@@ -333,6 +329,7 @@ copy_and_install_package(){
 		# проверяем на доступность ip роутера
 		if is_ip_or_host_alive "${dev_ip}"; then
 
+			echo -e "${PREF}${GREEN}Устройство по адресу '${dev_ip}:${dev_port}' доступно!${NOCL}"
 			# 	Проверяем есть ли ключ на роутере
 			docker_key=$(cat < "$(get_key_file)")
 			ssh -p "${dev_port}" "root@${dev_ip}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" \
@@ -342,25 +339,28 @@ copy_and_install_package(){
 			dev_arch=$(get_device_arch "${dev_ip}" "${dev_port}")
 	#    	текущая архитектура в контейнере (просто название без версии )
 			container_arch=$(echo "${ARCH_BUILD}" | sed -n 's|^\([a-zA-Z]\{4,\}\)[0-9]\{0,2\}\(-[0-9]\{1,2\}.[0-9]\{1,2\}\).*|\1|p')
-echo "${container_arch} = ${dev_arch}"
+
 			if [ "${container_arch}" = "${dev_arch}" ]; then
-
-				# копируем собранный пакет на роутер
-				copy_app_to_router "${dev_ip}" "${dev_port}"
+			# копируем собранный пакет на роутер
+			copy_app_to_router "${dev_ip}" "${dev_port}"
 #				запускаем установку пакета
-				run_reinstalation_on_router "${dev_ip}" "${dev_port}"
-
+			run_reinstalation_on_router "${dev_ip}" "${dev_port}"
+			show_line
 				# Запускаем тесты
 				case "${tests_ask}" in
 					YES|Yes|yes|y ) run_tests ;;
 					ASK|Ask|ask|a )
 						answer=''; read_ynq "Запустить исполнение тестов? " answer
-						[ "${answer}" = y ] run_tests ;;
+						[ "${answer}" = y ] && run_tests ;;
 					* ) ;;
 				esac
+			else
+				echo -e "${PREF}Устройство по адресу ${BLUE}${dev_ip}:${dev_port}${NOCL} имеет ${BLUE}${dev_arch} архитектуру${NOCL}."
+				echo -e "${PREF}И эта архитектура отлична от текущей - ${BLUE}${ARCH_BUILD}${NOCL}'. Копирование пропускаем!"
 			fi
+
 		else
-			echo -e "${RED}${PREF}IP адрес устройства '${dev_ip}' - НЕ доступен!${NOCL}"
+			echo -e "${PREF}${RED}Устройство по адресу '${dev_ip}:${dev_port}' не доступно, пропускаем!${NOCL}"
 		fi
 	done
 
