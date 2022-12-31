@@ -1,4 +1,4 @@
-# Файл манифеста для CCC
+# Файл манифеста для C
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=@APP_NAME

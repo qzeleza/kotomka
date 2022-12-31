@@ -76,8 +76,8 @@ create_package_section(){
     section_conf=$(get_config_value "SECTION_${section_name_caps}")
 
     if [ -n "${section_conf}" ]; then
-        if [ -f "${COMPILE_PATH}/${DEV_MANIFEST_DIR_NAME}/${section_name}" ] ; then
-            section_text=$(cat < "${COMPILE_PATH}/${DEV_MANIFEST_DIR_NAME}/${section_name}")
+        if [ -f "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" ] ; then
+            section_text=$(cat < "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}")
             if [ -n "${section_text}" ] ; then
 				section_text=$(printf "%s\n%s\n%s\n" "define Package/${APP_NAME}/${section_name}" "${section_text}" "endef")
 				awk -i inplace -v r="${section_text}" "{gsub(/@${section_name_caps}/,r)}1" "${make_file}"
@@ -148,6 +148,8 @@ do_package_make(){
     deb=${1}
     cd "${ENTWARE_PATH}" || exit 1
 
+	rm -f /apps/entware/tmp/info/.files-* /apps/entware/tmp/info/.overrides-*
+	find /apps/entware/ -type f -name '.files-packageinfokageinfo*' -exec rm {} \;
 #	удаляем предыдущую версию пакета ipk перед сборкой текущей версии
     rm -f "$(get_ipk_package_file)"
 
@@ -158,7 +160,8 @@ do_package_make(){
     	make tools/install ${deb} || make tools/install -j1 V=sc
     	make toolchain/install ${deb} || make toolchain/install -j1 V=sc
     fi
-    make "package/${APP_NAME}/compile" ${deb} || make "package/${APP_NAME}/compile" -j1 V=sc
+
+	make "package/${APP_NAME}/compile" ${deb} || make "package/${APP_NAME}/compile" -j1 V=sc
 
 }
 

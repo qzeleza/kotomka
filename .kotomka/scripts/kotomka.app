@@ -32,7 +32,7 @@ DEV_NAME_PATH=.kotomka
 PATH_PREFIX="../."
 DEV_CONFIG_NAME=build.conf
 DEV_CONFIG_FILE="../../${DEV_CONFIG_NAME}"
-
+DEVELOP_EXT=''
 
 . "${DEV_CONFIG_FILE}"
 . ./library "${PATH_PREFIX}."
@@ -96,7 +96,6 @@ IMAGE_NAME=$(echo "${DOCKER_ACCOUNT_NAME}" | tr "[:upper:]" "[:lower:]")/${APP_N
 #-------------------------------------------------------------------------------
 DOCKER_FILES_PATH=../docker
 DOCKER_FILE=${DOCKER_FILES_PATH}/Dockerfile
-DEVELOP_EXT=$(echo "${APPS_LANGUAGE}" | tr "[:upper:]" "[:lower:]")
 
 #-------------------------------------------------------------------------------
 #	Пути к файлам внутри контейнера
@@ -122,9 +121,19 @@ get_image_id()(docker image ls -q "${IMAGE_NAME}")
 #  Сбрасываем в первоначальное состояние пакет до установки языка разработки.
 #-------------------------------------------------------------------------------
 reset_data(){
-    rm -rf "${PATH_PREFIX}.${DEV_ROOT_PATH}/${DEV_SRC_PATH}/*" "${PATH_PREFIX}.${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/*"
-    echo -e "${RED}${PREF}Пакет сброшен в первоначальное состояние, до установки языка разработки.${NOCL}"
-    show_line
+
+	answer=''; read_ynq "Будут удалены все контейнеры и исходники приложения, ${RED}УВЕРЕНЫ${NOCL} [Y/N/Q]? " answer
+    [ "${answer}" = y ] && {
+    	show_line
+    	rm -rf "${PATH_PREFIX}${DEV_ROOT_PATH}"
+		purge_containers "$(docker ps -aq -f name="${APP_NAME}")" &>/dev/null
+		echo -e "${PREF}Пакет сброшен в первоначальное состояние.${NOCL}"
+		echo -e "${PREF}Папка с исходниками ${RED}${DEV_ROOT_PATH}${NOCL} удалена!${NOCL}"
+		echo -e "${PREF}Удалены все контейнеры приложения ${RED}${APP_NAME}${NOCL}!${NOCL}"
+		show_line
+    }
+
+
 }
 
 
@@ -197,11 +206,21 @@ create_sections (){
 #-------------------------------------------------------------------------------
 set_dev_language(){
 
-    case "${APPS_LANGUAGE}" in
-        CCC|ccc)    lang="Си" ;;
-        CPP|cpp)    lang="С++";;
-        BASH|bash)  lang="Bash";;
-    esac
+	# Исправляем ошибки при различном написании языка разработки (русский и англиский)
+	case "$(echo "${DEV_LANGUAGE}" | tr "[:upper:]" "[:lower:]")" in
+		си|c|cc|сс|ccc|ссс)
+			DEVELOP_EXT='c'				# на английском
+			lang="Си"					# на русском
+			;;
+		с++|cpp|c++|срр)
+			DEVELOP_EXT='cpp'			# на английском
+			lang="С++"					# на английском
+			;;
+		bash|sh|shell)
+			DEVELOP_EXT='bash'			# на английском
+			lang="Bash"
+			;;
+	esac
 
     echo -e "${BLUE}${PREF}Заявленным языком разработки является '${lang}'${NOCL}"
     echo -e "${BLUE}${PREF}Производим замену файлов в соответствии с установками в ${DEV_CONFIG_NAME} ${NOCL}"
@@ -213,38 +232,30 @@ set_dev_language(){
     rm -f "${makefile}" "${mainfiles}"
 
     case ${DEVELOP_EXT} in
-        cpp|CPP|срр|СРР)
+        cpp|c)
             cp -f "../templates/code/make/Makefile.${DEVELOP_EXT}"      "${makefile}"
             sedi  "s|@APP_NAME|${APP_NAME}|g"                           "${makefile}"
             ext_file=$(echo "${mainfiles}" | sed "s|main\.\*$|main.${DEVELOP_EXT}|")
             cp -f "../templates/code/src/main.${DEVELOP_EXT}"           "${ext_file}"
             ;;
 
-        ccc|CCC|ссс|ССС)
-            cp -f "../templates/code/make/Makefile.c"      				"${makefile}"
-            sedi  "s|@APP_NAME|${APP_NAME}|g"               			"${makefile}"
-            ext_file=$(echo "${mainfiles}" | sed "s|main\.\*$|main.c|")
-            cp -f "../templates/code/src/main.c"           				"${ext_file}"
-            ;;
-
-        BASH|bash)
-            cp "../templates/code/src/main.sh"                      "${mainfile_path}/${APP_NAME}"
+        bash)
+            cp "../templates/code/src/main.${DEVELOP_EXT}"             "${mainfile_path}/${APP_NAME}"
             ;;
         *)
             show_line
             echo -e "${RED}${PREF}Не распознан язык разработки в файле ${DEV_CONFIG_FILE}${NOCL}"
-            echo -e "${BLUE}${PREF}Текущее значение APPS_LANGUAGE = ${APPS_LANGUAGE}.${NOCL}"
-            echo -e "${BLUE}${PREF}Задайте одно из значений: CCC (Си), CPP (C++) или BASH.${NOCL}"
+            echo -e "${BLUE}${PREF}Текущее значение DEV_LANGUAGE = ${DEV_LANGUAGE}.${NOCL}"
+            echo -e "${BLUE}${PREF}Задайте одно из значений: C (Си), CPP (C++) или BASH.${NOCL}"
+            echo -e "${BLUE}${PREF}Значения можно задавать на русском или английском.${NOCL}"
             show_line
             exit 1
             ;;
     esac
 
-    manifest_scripts_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${DEV_MANIFEST_DIR_NAME}"
+    manifest_scripts_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}${DEV_MANIFEST_DIR_NAME}"
 #   создаем скрипты для сборки файла манифеста
     mkdir_when_not "${manifest_scripts_path}"
-    makefile_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${arch}"
-
 
 #   и копируем сам файл манифеста
     makefile_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${arch}"
@@ -313,7 +324,7 @@ prepare_code_structure(){
     fi
 
     if ! [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/" ]; then
-        mkdir -p "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${DEV_MANIFEST_DIR_NAME}"
+        mkdir -p "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}${DEV_MANIFEST_DIR_NAME}"
         check_dev_language
     fi
 
@@ -361,16 +372,22 @@ purge_containers(){
 #  Запускаем в случае, если при запуске контейнера произошла ошибка
 #-------------------------------------------------------------------------------
 run_when_error(){
+
 	container_id_or_name=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
-	mess=$(echo "${2}" | tr "[:lower:]" "[:upper:]")
 	error_tag="${RED}ОШИБКА${NOCL}"
 
-#	show_line;
-	echo -e "${error_tag} ${BLUE}${mess}${NOCL}"
-	print_line_sim '-' 1
+	show_line;
+	echo -e "${error_tag} ${PREF}${BLUE}В ПРОЦЕССЕ СБОРКИ ПАКЕТА ВОЗНИКЛИ ОШИБКИ${NOCL}"
+	echo -e "${error_tag} ${PREF}${BLUE}ЖУРНАЛ КОНТЕЙНЕРА ОБОЗНАЧЕН НИЖЕ:${NOCL}"
+	print_line_sim '='
+	print_line_sim '⬇'
+	print_line_sim "-"
+	echo -e "${YELLOW}"
 	docker logs "${1}" --details --tail 50
-#	purge_containers "${1}" &>/dev/null
-	print_line_sim '-' 1
+	echo -e "${NOCL}"
+	print_line_sim "-"
+	print_line_sim '⬆'
+	print_line_sim '='
 	echo -e "${error_tag} ${PREF}${BLUE}КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}${NOCL}"
 	show_line
 	echo
@@ -404,8 +421,7 @@ docker_exec(){
            	--user "${user}" \
            	 "${container_id_exited}" /bin/bash ${script_to_run} || {
            	 	container_name=$(docker ps -a -f id=${container_id_exited} --format "{{.Names}}")
-           	 	error="${PREF}В процессе сборки пакета возникли ошибки в контейнере ${container_name}"
-				run_when_error "${container_name}" "${error}!"
+				run_when_error "${container_name}"
                	exit 1
         }
 }
@@ -442,8 +458,7 @@ docker_run(){
            	${name_container} \
            	--mount type=bind,src="${context}",dst="${APPS_ROOT}"/"${APP_NAME}" \
            	"$(get_image_id)" /bin/bash ${script_to_run} || {
-        		error="${PREF}В процессе сборки пакета возникли ошибки в контейнере ${container_name}"
-				run_when_error "${container_name}" "${error}!"
+				run_when_error "${container_name}"
                	exit 1
            }
 }
@@ -643,7 +658,6 @@ ask_arch_to_run(){
 print_header(){
 	arch=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
 
-#	show_line
 	echo ""
 	echo ""
 	echo ""
@@ -673,7 +687,9 @@ manager_container_to_make(){
         }
     fi
 #    если язык разработки Shell
-    if [[ "${APPS_LANGUAGE}" =~ BASH|bash|Bash|sh|SH|Sh ]] ; then
+    if [ "${DEVELOP_EXT}" = bash ] ; then
+    	print_header "BASH"
+		show_line
         container_run_to_make "${script_to_run}" "${run_with_root}" "$(get_container_name "all")" "all"
     else
 #		если язык разработки Си или С++
@@ -704,13 +720,17 @@ manager_container_to_make(){
 			if [ "${choice}" -gt "${list_size}" ] && [ -n "${script_to_run}" ]; then
 				num=1;
 	#       	в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
+#	set -x
 				for _arch in ${list_arch}; do
+#					[ "${num}" = 1 ] && show_line
 					[ "${num}" -le "${list_size}" ] && print_header "${_arch}"
+#					[ "${num}" -lt "${list_size}" ] && show_line
 					container_run_to_make "${script_to_run}" "${run_with_root}" "${_arch}"
-					[ "${list_size}" -eq "${num}" ] || show_line
+
+#
 					num=$((num + 1))
 				done
-
+#	set	+x
 			else
 				arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
 				print_header "${arch}"
@@ -761,6 +781,10 @@ package_version_set(){
     show_line
 }
 
+
+#-------------------------------------------------------------------------------
+# Удаляем контейнер с заданной в аргументе архитектурой
+#-------------------------------------------------------------------------------
 remove_arch_container(){
 	arch_build=${1}
 	if [ "${arch_build}" ]; then
@@ -768,18 +792,18 @@ remove_arch_container(){
 	        container_id=$(get_container_id "${APP_NAME}-${arch_build}*")
 	        if [ "${container_id}" ]; then
 	            purge_containers "${container_id}" &>/dev/null
-	        	echo -e "${PREF}${GREEN}Контейнер c архитектурой сборки '${arch_build}' успешно удален.${NOCL}"
+	        	echo -e "${PREF}Контейнер c архитектурой сборки ${GREEN}${arch_build}${NOCL} успешно удален."
 	        else
-	            echo -e "${PREF}${BLUE}Контейнер c архитектурой сборки '${arch_build}' не существует.${NOCL}"
+	            echo -e "${PREF}Контейнер c архитектурой сборки ${GREEN}${arch_build}${NOCL} не существует."
 	        fi
 
 
 	    else
-	        echo -e "${PREF}${BLUE}Указанная архитектура сборки отсутствует.${NOCL}"
+	        echo -e "${PREF}Указанная архитектура сборки ${RED}отсутствует.${NOCL}"
 	    fi
 
 	else
-		echo -e "${PREF}${RED}Не задана архитектура сборки для удаления!${NOCL}"
+		echo -e "${PREF}${RED}Не задана${NOCL} архитектура сборки для удаления!"
 	fi
 	show_line
 
@@ -810,8 +834,13 @@ show_help(){
     echo "                 где arch может принимать следующие значения: ."
     echo "                 all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
     echo "                 aarch64 - для ARCH64 архитектуры, "
-    echo "                 mips - для MIPS архитектуры, "
-    echo "                 mipsel - для MIPSEL архитектуры."
+    echo "                 mips - для MIPS архитектуры "
+    echo "                 mipsel - для MIPSEL архитектуры"
+    echo " 				   armv5  - для ARMv5 архитектуры"
+    echo " 				   armv7-2.6 - для ARMv7 версии 2.6 архитектуры"
+	echo " 				   armv7-3.2 - для ARMv7 версии 3.2 архитектуры"
+    echo " 				   x64  - для X64 архитектуры"
+    echo " 				   x86  - для X86 архитектуры"
     echo "make ver       - отображаем текущую версию собираемого пакета"
     echo "make ver <N>   - устанавливаем версию собираемого пакета, где номер в формате <N-stage-rel>"
     echo "                 N - номер версии, например 1.0.12"
@@ -822,18 +851,10 @@ show_help(){
     echo "copy     [-cp] - копирование уже собранного пакета на роутер"
     echo "term     [-tr] - подключение к контейнеру без исполнения скриптов под пользователем '${USER}'."
 	echo "term <arch>    - подключение к контейнеру под пользователем '${USER}' для указанной/ых архитектур,"
-	echo "                 где arch может принимать следующие значения: ."
-    echo "                 all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
-    echo "                 aarch64 - для ARCH64 архитектуры, "
-    echo "                 mips - для MIPS архитектуры, "
-    echo "                 mipsel - для MIPSEL архитектуры."
+	echo "                 параметр arch, такой же, как и в команде make (см. выше)."
     echo "root     [-rt] - подключение к контейнеру без исполнения скриптов под пользователем 'root'"
 	echo "root <arch>    - подключение к контейнеру под пользователем 'root' для указанной/ых архитектур,"
-	echo "                 где arch может принимать следующие значения: ."
-    echo "                 all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
-    echo "                 aarch64 - для ARCH64 архитектуры, "
-    echo "                 mips - для MIPS архитектуры, "
-    echo "                 mipsel - для MIPSEL архитектуры."
+	echo "                 параметр arch, такой же, как и в команде make (см. выше)."
     echo "debug    [-vb] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
     echo "test     [-ts] - запуск тестов на удаленном устройстве. "
     echo "init     [-in] - cбрасываем в первоначальное состояние пакет до установки языка разработки."
@@ -842,10 +863,12 @@ show_help(){
     show_line "-"
     echo -e "Примеры запуска:"
     show_line "-"
-    echo  " ./kotomka build      - запускаем сборку среды разработки и первоначальную сборку пакета."
-    echo  " ./kotomka -mk -vb    - запускаем сборку пакета с опцией отладки."
-    echo  " ./kotomka -cp        - копируем уже ранее собранный пакет на удаленное устройство (роутер)."
-    echo  " ./kotomka term       - заходим в ранее собранный контейнер под именем разработчика."
+    echo  " ./build.run make mips  - запускаем сборку пакета для платформы mips."
+    echo  " ./build.run build all  - запускаем сборку среды разработки и первоначальную сборку пакета."
+    echo  " 						 для всех заданных архитектур в файле конфигурации ./build.conf"
+    echo  " ./build.run -mk -vb    - запускаем сборку пакета с опцией отладки."
+    echo  " ./build.run -cp        - копируем уже ранее собранный пакет на удаленное устройство (роутер)."
+    echo  " ./build.run term       - заходим в ранее собранный контейнер под именем разработчика."
     show_line
 }
 

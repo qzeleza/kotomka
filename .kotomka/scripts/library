@@ -22,7 +22,7 @@
 # статей, лицензии Apache License 2.0 по вышеуказанным ссылкам.
 #-------------------------------------------------------------------------------
 
-DEV_MANIFEST_DIR_NAME=Makefiles
+DEV_MANIFEST_DIR_NAME=''
 DEV_CONFIG_FILE="${1}/build.conf"
 . "${DEV_CONFIG_FILE}"
 set -e
@@ -112,10 +112,7 @@ show_line(){
   printf '=%.s' {1..100} && printf '\n'
 }
 
-#-------------------------------------------------------------------------------
-# Получаем имя приложения из названия корневой папки
-#-------------------------------------------------------------------------------
-APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
+
 #-------------------------------------------------------------------------------
 # Получаем необходимую информацию о версии пакета
 #-------------------------------------------------------------------------------
@@ -246,7 +243,7 @@ copy_ssh_keys_to_router(){
 copy_app_to_router(){
 	dev_ip=${1}; dev_port=${2}
 
-	echo "${PREF}Загружаем пакет на устройство с IP '${dev_ip}:${dev_port}' и производим установку..."
+	echo "${PREF}Копируем пакет на устройство и производим его установку..."
 	show_line
 #	создаем папку на устройстве для хранения упакованного пакета
 	ssh -p "${dev_port}" "root@${dev_ip}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
@@ -321,19 +318,21 @@ copy_and_install_package(){
     tests_ask=${1:-no}
 
     for dev in ${ROUTER_LIST} ; do
-#    	получаем адрес и порт (по умолчанию - 22)
+#    	получаем адрес и порт (по умолчанию - 222)
     	dev_ip=$(echo "${dev}" | cut -d':' -f1 )
     	dev_port=$(echo "${dev}" | cut -d':' -f2)
-    	[ -z "${dev_port}" ] && dev_port=22
+    	[ "${dev_port}" = "${dev_ip}" ] && dev_port=222
 
 		# проверяем на доступность ip роутера
 		if is_ip_or_host_alive "${dev_ip}"; then
 
-			echo -e "${PREF}${GREEN}Устройство по адресу '${dev_ip}:${dev_port}' доступно!${NOCL}"
+			echo -e "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL} доступно!"
 			# 	Проверяем есть ли ключ на роутере
 			docker_key=$(cat < "$(get_key_file)")
-			ssh -p "${dev_port}" "root@${dev_ip}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" \
-				|| copy_ssh_keys_to_router "${dev_ip}" "${dev_port}"
+			ssh -p "${dev_port}" "root@${dev_ip}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" || {
+					show_line
+					copy_ssh_keys_to_router "${dev_ip}" "${dev_port}"
+			}
 
 	#    	текущая архитектура на устройстве
 			dev_arch=$(get_device_arch "${dev_ip}" "${dev_port}")
@@ -355,12 +354,12 @@ copy_and_install_package(){
 					* ) ;;
 				esac
 			else
-				echo -e "${PREF}Устройство по адресу ${BLUE}${dev_ip}:${dev_port}${NOCL} имеет ${BLUE}${dev_arch} архитектуру${NOCL}."
-				echo -e "${PREF}И эта архитектура отлична от текущей - ${BLUE}${ARCH_BUILD}${NOCL}'. Копирование пропускаем!"
+				echo -e "${PREF}Но его архитектура ${BLUE}${ARCH_BUILD//-*/}${NOCL} отлична от текущей ${BLUE}${dev_arch}${NOCL}. Копирование ${RED}пропускаем!${NOCL}"
+				show_line
 			fi
 
 		else
-			echo -e "${PREF}${RED}Устройство по адресу '${dev_ip}:${dev_port}' не доступно, пропускаем!${NOCL}"
+			echo -e "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL} не доступно, ${RED}пропускаем!${NOCL}"
 		fi
 	done
 
