@@ -614,7 +614,7 @@ container_run_to_make(){
         if [ -n "${container_id_down}" ]; then
             connect_when_stopped "${script_to_run}" "${run_with_root}" "${container_id_down}" "${arch}" "${container_name}"
         else
-            if get_image_id &>/dev/null ; then
+            if [ -n "$(get_image_id)" ]; then
                 connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${arch}" "${container_name}"
             else
                 build_image && {
