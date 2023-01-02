@@ -155,7 +155,8 @@ prepare_makefile(){
 
     app_router_dir=$(escape "/opt${APPS_ROOT}/${APP_NAME}")
     github_url=$(escape "https://github.com/${GITHUB_ACCOUNT_NAME}/${APP_NAME}")
-    source_dir=$(escape "${APPS_ROOT}/${APP_NAME}")
+    code_dir=$(escape "${APPS_ROOT}/${APP_NAME}${DEV_ROOT_PATH//./}/")
+    source_dir=$(escape "${APPS_ROOT}/${APP_NAME}${DEV_ROOT_PATH//./}/${DEV_SRC_PATH}")
 
     make_file="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/Makefile"
 
@@ -171,7 +172,8 @@ prepare_makefile(){
          s/@CATEGORY/$(escape "${PACKAGE_CATEGORY}")/g; \
          s/@SUBMENU/$(escape "${PACKAGE_SUBMENU}")/g; \
          s/@TITLE/$(escape "${PACKAGE_TITLE}")/g; \
-         s/@SOURCE_DIR/${source_dir}/g;" "${make_file}"
+         s/@SOURCE_DIR/${source_dir}/g; \
+         s/@CODE_DIR/${code_dir}/g;" "${make_file}"
 
     awkfun -i inplace -v r="${PACKAGE_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' "${make_file}"
 
@@ -619,7 +621,8 @@ container_run_to_make(){
             else
                 build_image && {
                 	echo "${PREF}Запускаем сборку пакета в контейнере '${container_name}' ..."
-        			docker_run "${script_to_run}" "${container_name}" "${arch}" "${U_ID}:${G_ID}"
+                	show_line
+                	manager_container_to_make "${script_to_run}" "" "${arch}"
                 }
 
             fi

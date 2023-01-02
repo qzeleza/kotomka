@@ -28,7 +28,7 @@ endef
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
-	cp -rf @SOURCE_DIR/code/src/. $(PKG_BUILD_DIR)
+	cp -rf @SOURCE_DIR/. $(PKG_BUILD_DIR)
 	$(Build/Patch)
 endef
 
