@@ -831,7 +831,7 @@ show_help(){
     show_line
     echo -e "${BLUE}Допустимые аргументы:${NOCL}"
     show_line
-    echo "build    [-bl] - сборка образа и последующий запуск сборки пакета"
+    echo "build    [-bl] - сборка образа на основании которого будут собираться контейнеры с указанными архитектурами."
     echo "make     [-mk] - сборка пакета и копирование его на роутер"
     echo "make <arch>    - сборка пакета и копирование его на роутер для указанной/ых архитектур,"
     echo "                 где arch может принимать следующие значения: ."
@@ -895,7 +895,8 @@ arg_2=$(echo "${1}" | cut -d' ' -f2)
 case "${arg_1}" in
 	term|-tr ) 	[ -n "${arg_2}" ] && manager_container_to_make "" "" "${arg_2}" ;;
 	root|-rt) 	[ -n "${arg_2}" ] && manager_container_to_make "" "yes" "${arg_2}" ;;
-	make*|-mk*|build*|-bl*)
+	build|-bl) 				  build_image ;;
+	make|-mk)
 	    case  "${arg_2}" in
 	        ver* )          package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
 	        *    )          manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${arg_2}" ;;
