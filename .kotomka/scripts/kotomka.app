@@ -28,7 +28,8 @@ NOCL="\033[m";
 PREF='>> '
 SEP=
 
-DEV_NAME_PATH=.kotomka
+PACKAGE_APP_NAME=kotomka
+DEV_NAME_PATH=.${PACKAGE_APP_NAME}
 PATH_PREFIX="../."
 DEV_CONFIG_NAME=build.conf
 DEV_CONFIG_FILE="../../${DEV_CONFIG_NAME}"
@@ -874,6 +875,7 @@ show_help(){
     echo "debug    [-vb] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
     echo "test     [-ts] - запуск тестов на удаленном устройстве. "
     echo "reset    [-rs] - cбрасываем в первоначальное состояние пакет до установки языка разработки."
+    echo "update   [-up] - обновляем из github данный проект."
     echo "help     [-hl] - отображает настоящую справку"
 
     show_line "-"
@@ -906,22 +908,23 @@ arg_1=$(echo "${1}" | cut -d' ' -f1)
 arg_2=$(echo "${1}" | cut -d' ' -f2)
 
 case "${arg_1}" in
-	term|-tr ) 	[ -n "${arg_2}" ] && manager_container_to_make "" "" "${arg_2}" ;;
-	root|-rt) 	[ -n "${arg_2}" ] && manager_container_to_make "" "yes" "${arg_2}" ;;
-	build|-bl) 				  build_image ;;
+	term|-tr ) 	[ -n "${arg_2}" ] && 		manager_container_to_make "" "" "${arg_2}" ;;
+	root|-rt) 	[ -n "${arg_2}" ] && 		manager_container_to_make "" "yes" "${arg_2}" ;;
+	build|-bl) 				  				build_image ;;
 	make|-mk)
 	    case  "${arg_2}" in
-	        ver* )          package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
-	        *    )          manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${arg_2}" ;;
+	        ver* )          				package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
+	        *    )          				manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${arg_2}" ;;
 	    esac
 	    ;;
-	copy|-cp )  	        manager_container_to_make "${SCRIPT_TO_COPY}" ;;
-    test|-ts )  	        manager_container_to_make "${SCRIPT_TO_TEST}" ;;
-    rebuild|-rb)            rebuild_image "${SCRIPT_TO_MAKE}" ;;
-	remove|rm|del| -rm)			remove_arch_container "${arg_2}";;
-    help|-h|--help)         show_help ;;
+	copy|-cp )  	        				manager_container_to_make "${SCRIPT_TO_COPY}" ;;
+    test|-ts )  	        				manager_container_to_make "${SCRIPT_TO_TEST}" ;;
+    rebuild|-rb)            				rebuild_image "${SCRIPT_TO_MAKE}" ;;
+	remove|rm|del| -rm)						remove_arch_container "${arg_2}";;
+	update|-ud|-up)							update_me ;;
+    help|-h|--help)         				show_help ;;
 	*)
-							echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}";
-                            show_help
+											echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}";
+                            				show_help
     ;;
 esac
