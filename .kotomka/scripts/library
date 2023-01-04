@@ -355,7 +355,6 @@ copy_and_install_package(){
 				esac
 			else
 				echo -e "${PREF}Но его архитектура ${BLUE}${ARCH_BUILD//-*/}${NOCL} отлична от текущей ${BLUE}${dev_arch}${NOCL}. Копирование ${RED}пропускаем!${NOCL}"
-				show_line
 			fi
 
 		else

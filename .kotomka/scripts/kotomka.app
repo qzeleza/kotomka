@@ -724,17 +724,11 @@ manager_container_to_make(){
 			if [ "${choice}" -gt "${list_size}" ] && [ -n "${script_to_run}" ]; then
 				num=1;
 	#       	в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
-#	set -x
 				for _arch in ${list_arch}; do
-#					[ "${num}" = 1 ] && show_line
 					[ "${num}" -le "${list_size}" ] && print_header "${_arch}"
-#					[ "${num}" -lt "${list_size}" ] && show_line
 					container_run_to_make "${script_to_run}" "${run_with_root}" "${_arch}"
-
-#
 					num=$((num + 1))
 				done
-#	set	+x
 			else
 				arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
 				print_header "${arch}"
