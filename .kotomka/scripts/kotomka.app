@@ -28,7 +28,8 @@ NOCL="\033[m";
 PREF='>> '
 SEP=
 
-DEV_NAME_PATH=.kotomka
+PACKAGE_APP_NAME=kotomka
+DEV_NAME_PATH=.${PACKAGE_APP_NAME}
 PATH_PREFIX="../."
 DEV_CONFIG_NAME=build.conf
 DEV_CONFIG_FILE="../../${DEV_CONFIG_NAME}"
@@ -821,6 +822,37 @@ set_debug_status(){
     echo "${*}" | sed "s/debug//g; s/-vb//g; s/-v//g;" | tr -d ' '
 }
 
+
+#-------------------------------------------------------------------------------
+# Обновляем из github репозитория настоящий пакет
+#-------------------------------------------------------------------------------
+update_me(){
+
+	{
+<<<<<<< HEAD
+		tmp_path="../../.tmp-update"
+=======
+		tmp_path="../../.tmp-pack"
+>>>>>>> da616a3 (Новая функция update для обновления пакета котомка)
+		rm -rf "${tmp_path}" && mkdir "${tmp_path}" && cd "${tmp_path}" || exit 1
+		curl https://codeload.github.com/qzeleza/${PACKAGE_APP_NAME}/zip/refs/heads/main -o ./${PACKAGE_APP_NAME}.zip &>/dev/null
+		unzip ./${PACKAGE_APP_NAME}.zip &>/dev/null
+		app_path=$(find . -type d -name "${PACKAGE_APP_NAME}-*" | head -1)
+		cd "${app_path}/" && ls | grep -v run | xargs rm || exit 1
+		cd "${tmp_path}" || exit 1
+		cp -rf "${app_path}/." "../" || exit 1
+<<<<<<< HEAD
+		cd .. && rm -rf "./$(basename "${tmp_path}")" || exit 1
+	} && echo -e "${GREEN}Обновление удачно завершено${NOCL}" || echo -e "${RED}Во время обновления возникли ошибки!${NOCL}"
+=======
+
+	} && echo -e "${GREEN}Обновление удачно завершено${NOCL}" || echo -e "${RED}Во время обновления возникли ошибки!${NOCL}"
+	rm -rf "${tmp_path}" || exit 1
+>>>>>>> da616a3 (Новая функция update для обновления пакета котомка)
+	show_line
+}
+
+
 #-------------------------------------------------------------------------------
 # Удаляем готовый образ и собираем его заново для запуска контейнера
 #-------------------------------------------------------------------------------
@@ -861,6 +893,7 @@ show_help(){
     echo "debug    [-vb] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
     echo "test     [-ts] - запуск тестов на удаленном устройстве. "
     echo "reset    [-rs] - cбрасываем в первоначальное состояние пакет до установки языка разработки."
+    echo "update   [-up] - обновляем из github репозитория настоящий пакет."
     echo "help     [-hl] - отображает настоящую справку"
 
     show_line "-"
@@ -907,6 +940,7 @@ case "${arg_1}" in
     rebuild|-rb)            rebuild_image "${SCRIPT_TO_MAKE}" ;;
 	remove|rm|del| -rm)			remove_arch_container "${arg_2}";;
     help|-h|--help)         show_help ;;
+	update|-up)				update_me ;;
 	*)
 							echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}";
                             show_help
