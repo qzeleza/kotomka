@@ -177,8 +177,8 @@ do_package_make(){
 #-------------------------------------------------------------------------------
 print_compile_header(){
 	print_mess "${PREF}Задействовано ${BLUE}${np} яд. процессора.${NOCL}"
-	if [ "${DEBUG}" = YES ]; then deb_status="ВКЛЮЧЕН"; else deb_status="ОТКЛЮЧЕН"; fi
-	print_mess "${PREF}Режим отладки: ${BLUE}${deb_status}${NOCL}"
+	if [ "${DEBUG}" = YES ]; then deb_status="${RED}ВКЛЮЧЕН${NOCL}"; else deb_status="${GREEN}ОТКЛЮЧЕН${NOCL}"; fi
+	print_mess "${PREF}Режим отладки: ${deb_status}"
 	print_mess "${PREF}Makefile успешно импортирован для ${BLUE}${ARCH_BUILD}${NOCL}."
 	print_mess "${PREF}Собираем пакет ${BLUE}${APP_NAME}${NOCL} вер. ${BLUE}${FULL_VERSION}${NOCL}"
 	check_arch								#	проверяем архитектуру сборки
