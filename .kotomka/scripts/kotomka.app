@@ -371,6 +371,18 @@ purge_containers(){
 }
 
 
+print_error_log_line(){
+
+	mess=${1}; sim=${1:--}
+	len_mess=${#warr_mess}
+	sim_len=$((100-len_mess))
+	sim_len=$((sim_len/2))
+
+	printf "%b${RED}%${sim_len}s${NOCL}" | tr ' ' "${sim}"
+	echo -ne "${BLUE}${mess}${NOCL}"
+	printf "%b${RED}%${sim_len}s${NOCL}\n" | tr ' ' "${sim}"
+
+}
 #-------------------------------------------------------------------------------
 #  Запускаем в случае, если при запуске контейнера произошла ошибка
 #-------------------------------------------------------------------------------
@@ -381,17 +393,16 @@ run_when_error(){
 
 	show_line;
 	echo -e "${error_tag} ${PREF}${BLUE}В ПРОЦЕССЕ СБОРКИ ПАКЕТА ВОЗНИКЛИ ОШИБКИ${NOCL}"
-	echo -e "${error_tag} ${PREF}${BLUE}ЖУРНАЛ КОНТЕЙНЕРА ОБОЗНАЧЕН НИЖЕ:${NOCL}"
-	print_line_sim '='
-	print_line_sim '⬇'
-	print_line_sim "-"
+	show_line
+
+	print_error_log_line "ЖУРНАЛ КОНТЕЙНЕРА ОБОЗНАЧЕН НИЖЕ:" '⬇'
+
 	echo -e "${YELLOW}"
 	docker logs "${1}" --details --tail 50
 	echo -e "${NOCL}"
-	print_line_sim "-"
-	print_line_sim '⬆'
-	print_line_sim '='
-	echo -e "${error_tag} ${PREF}${BLUE}КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}${NOCL}"
+
+
+	print_error_log_line "КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬆'
 	show_line
 	echo
 }

@@ -47,11 +47,8 @@ copy_code_files(){
 	# копируем данные кода в папку для компиляции
 	build_files_path=${APP_MAKE_BUILD_PATH}/files
 	rm -rf "${build_files_path}"
-	opt_name=$(basename "${OPT_PATH}")
-	mkdir_when_not "${build_files_path}/${opt_name}"
-    cp -rf "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}/." "${build_files_path}/${opt_name}"
-    mkdir_when_not "${APP_MAKE_BUILD_PATH}/${SRC_PATH}"
-    cp -rf "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}/." "${APP_MAKE_BUILD_PATH}/${SRC_PATH}"
+    copy_dir "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${build_files_path}"
+    copy_dir "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${build_files_path}"
 }
 
 #-------------------------------------------------------------------------------
@@ -158,18 +155,15 @@ do_package_make(){
     	make oldconfig <<< m
 
     	make tools/install ${deb} || {
-    		make tools/install -j1 V=sc
-    		make clean
+    		make tools/install -j1 V=sc || make clean
     	}
     	make toolchain/install ${deb} || {
-    		make toolchain/install -j1 V=sc;
-    		make clean
+    		make toolchain/install -j1 V=sc || make clean
     	}
     fi
 
 	make "package/${APP_NAME}/compile" ${deb} || {
-		make "package/${APP_NAME}/compile" -j1 V=sc
-		make "package/${APP_NAME}/clean"
+		make "package/${APP_NAME}/compile" -j1 V=sc || make "package/${APP_NAME}/clean"
 	}
 
 }
