@@ -373,14 +373,14 @@ purge_containers(){
 
 print_error_log_line(){
 
-	mess=${1}; sim=${1:--}
-	len_mess=${#warr_mess}
-	sim_len=$((100-len_mess))
+	mess=${1}; sim=${2:--}
+	len_mess=${#mess}
+	sim_len=$((100-len_mess-4))
 	sim_len=$((sim_len/2))
 
-	printf "%b${RED}%${sim_len}s${NOCL}" | tr ' ' "${sim}"
-	echo -ne "${BLUE}${mess}${NOCL}"
-	printf "%b${RED}%${sim_len}s${NOCL}\n" | tr ' ' "${sim}"
+	printf "${RED}%b%${sim_len}s${NOCL}" " " | tr ' ' "${sim}"
+	echo -ne " ${GREEN}${mess}${NOCL} "
+	printf "${RED}%b%${sim_len}s${NOCL}\n" " " | tr ' ' "${sim}"
 
 }
 #-------------------------------------------------------------------------------
@@ -395,13 +395,15 @@ run_when_error(){
 	echo -e "${error_tag} ${PREF}${BLUE}В ПРОЦЕССЕ СБОРКИ ПАКЕТА ВОЗНИКЛИ ОШИБКИ${NOCL}"
 	show_line
 
-	print_error_log_line "ЖУРНАЛ КОНТЕЙНЕРА ОБОЗНАЧЕН НИЖЕ:" '⬇'
+	print_error_log_line "НАЧАЛО ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬇'
+	print_line_sim -
 
 	echo -e "${YELLOW}"
-	docker logs "${1}" --details --tail 50
+	docker logs "${1}" --details --tail 66
 	echo -e "${NOCL}"
 
 
+	print_line_sim -
 	print_error_log_line "КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬆'
 	show_line
 	echo
