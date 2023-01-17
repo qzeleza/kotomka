@@ -798,15 +798,18 @@ package_version_set(){
 # Удаляем контейнер с заданной в аргументе архитектурой
 #-------------------------------------------------------------------------------
 remove_arch_container(){
+
 	arch_build=${1}
+
 	if [ "${arch_build}" ]; then
 	    if get_arch_list | grep -q "${arch_build}" ; then
+	        echo -en "${PREF}Контейнер c архитектурой сборки ${GREEN}${arch_build}${NOCL} "
 	        container_id=$(get_container_id "${APP_NAME}-${arch_build}*")
 	        if [ "${container_id}" ]; then
-	            purge_containers "${container_id}" &>/dev/null
-	        	echo -e "${PREF}Контейнер c архитектурой сборки ${GREEN}${arch_build}${NOCL} успешно удален."
+	        	purge_containers "${container_id}" &>/dev/null && mess="успешно удален." || mess="${RED}НЕ УДАЛЕН${NOCL}"
+	            echo -e "${mess}"
 	        else
-	            echo -e "${PREF}Контейнер c архитектурой сборки ${GREEN}${arch_build}${NOCL} не существует."
+	            echo -e "${RED}не существует.${NOCL} "
 	        fi
 
 
@@ -820,7 +823,6 @@ remove_arch_container(){
 	show_line
 
 }
-
 #-------------------------------------------------------------------------------
 # Проверяем был ли в аргументах передан флаг отладки
 #-------------------------------------------------------------------------------
