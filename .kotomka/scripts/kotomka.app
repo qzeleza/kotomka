@@ -836,7 +836,7 @@ set_debug_status(){
 # Обновляем из github репозитория настоящий пакет
 #-------------------------------------------------------------------------------
 update_me(){
-
+	echo -e "${GREEN}Обновление 'Котомки' завершено${NOCL} "
 	{
 		tmp_path="../../.tmp-update"
 		rm -rf "${tmp_path}" && mkdir "${tmp_path}" && cd "${tmp_path}" || exit 1
@@ -847,7 +847,7 @@ update_me(){
 		cd "${tmp_path}" || exit 1
 		cp -rf "${app_path}/." "../" || exit 1
 		cd .. && rm -rf "./$(basename "${tmp_path}")" || exit 1
-	} && echo -e "${GREEN}Обновление удачно завершено${NOCL}" || echo -e "${RED}Во время обновления возникли ошибки!${NOCL}"
+	} && echo -e "${GREEN}удачно!${NOCL}" || echo -e "${RED}с ошибками!${NOCL}"
 	show_line
 }
 #-------------------------------------------------------------------------------
