@@ -156,14 +156,17 @@ do_package_make(){
 
     	make tools/install ${deb} || {
     		make tools/install -j1 V=sc || make clean
+    		exit 1
     	}
     	make toolchain/install ${deb} || {
     		make toolchain/install -j1 V=sc || make clean
+    		exit 1
     	}
     fi
 
 	make "package/${APP_NAME}/compile" ${deb} || {
 		make "package/${APP_NAME}/compile" -j1 V=sc || make "package/${APP_NAME}/clean"
+		exit 1
 	}
 
 }
@@ -212,17 +215,15 @@ print_compile_foot(){
 make_all(){
 
 	time_start=$(date "+%s")
-	print_compile_header					# 	печатаем заголовок компиляции
-	copy_code_files							#	копируем данные кода в папку для компиляции
-	create_makefile							#	создаем файл манифеста Makefile
- 	do_package_make "${deb}"				# 	производим сборку пакета
-	ipk_file=$(get_ipk_package_file)		#  	получаем полное имя ipk файла (с путем)
-	mkdir_when_not "${PACKAGES_PATH}" 		# 	если нет этой папки, то создаем ее
-	cp "${ipk_file}" "${PACKAGES_PATH}"		# 	копируем ipk файл в локальную папку paсkages
+	print_compile_header										# 	печатаем заголовок компиляции
+	copy_code_files												#	копируем данные кода в папку для компиляции
+	create_makefile												#	создаем файл манифеста Makefile
+ 	do_package_make "${deb}"									# 	производим сборку пакета
+	copy_file "$(get_ipk_package_file)" "${PACKAGES_PATH}"		# 	копируем ipk файл в локальную папку paсkages
 	show_line
-	copy_and_install_package				# 	копируем и устанавливаем собранный пакет на устройство
+	copy_and_install_package									# 	копируем и устанавливаем собранный пакет на устройство
 	show_line
-	print_compile_foot "${time_start}"		# 	печатаем футроп компиляции
+	print_compile_foot "${time_start}"							# 	печатаем футроп компиляции
 }
 
 make_all
