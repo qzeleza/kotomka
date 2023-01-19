@@ -38,6 +38,36 @@ BUILD_CONFIG="${ENTWARE_PATH}/.config"
 PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${ROOT_PATH}/${IPK_PATH}"
 
 print_mess()(echo -e "${1}")
+
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# обновляем ленту пакетов
+#-------------------------------------------------------------------------------
+feeds_update(){
+
+	cur_path=$(pwd)
+	cd "${ENTWARE_PATH}" || exit 1
+	./scripts/feeds update ${APP_NAME}
+	./scripts/feeds install -a -p ${APP_NAME}
+	cd "${cur_path}" || exit 1
+}
+
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# обновляем ленту пакетов лишь однажды при первом запуске пакета
+#-------------------------------------------------------------------------------
+feeds_update_ones(){
+
+	feeds_file=${ENTWARE_PATH}/feeds.conf
+
+	cat < ${feeds_file} | grep -q "${APP_NAME}" || {
+		echo "src-link ${APP_NAME} ${APP_MAKE_BUILD_PATH}" >> ./${feeds_file}
+		feeds_update
+	}
+
+}
+
+
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # копируем данные кода в папку для компиляции
@@ -48,7 +78,10 @@ copy_code_files(){
 	build_files_path=${APP_MAKE_BUILD_PATH}/files
 	rm -rf "${build_files_path}"
     copy_dir "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${build_files_path}"
-    copy_dir "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${build_files_path}"
+    copy_dir "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${APP_MAKE_BUILD_PATH}"
+
+
+
 }
 
 #-------------------------------------------------------------------------------
@@ -164,16 +197,17 @@ do_package_make(){
     	}
     fi
 
-	make "package/${APP_NAME}/compile" ${deb} || {
-		make "package/${APP_NAME}/compile" -j1 V=sc || make "package/${APP_NAME}/clean"
+	make "package/${APP_NAME}/{clean,compile}" ${deb} || {
+		make "package/${APP_NAME}/compile" -j1 V=sc || feeds_update
 		exit 1
+
 	}
 
 }
 
 # cd /apps/entware && make menuconfig
-# cd /apps/entware && ll /apps/entware/packages/utils/kotomka/ &&  cat /apps/entware/packages/utils/kotomka/Makefile
-# &&  make package/kotomka/compile -j1 V=sc
+# cd /apps/entware && ll /apps/entware/packages/utils/samovar/ &&  cat /apps/entware/packages/utils/kotomka/Makefile
+# &&  make package/samovar/compile -j1 V=sc
 
 #
 
