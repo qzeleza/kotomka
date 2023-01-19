@@ -34,6 +34,8 @@ YELLOW="\033[33m";
 NOCL="\033[m";
 PREF='>> '
 APPS_ROOT=/apps
+APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
+PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${ROOT_PATH}/${IPK_PATH}"
 
 #-------------------------------------------------------------------------------
 # Данные учетной записи от имени которой собираем пакет
@@ -117,7 +119,7 @@ read_choice(){
 #
 #-------------------------------------------------------------------------------
 print_line_sim(){
-	sim=${1:--}; nspaces=${2:-0}; len=${3:-100}
+	sim=${1:--}; nspaces=${2:-0}; len=${3:-105}
 	printf "%${nspaces}s"
 	printf "%$((len - nspaces))s\n" | tr ' ' "${sim}"
 }
@@ -126,7 +128,7 @@ print_line_sim(){
 # Печатаем строку из 100  знаков равно
 #-------------------------------------------------------------------------------
 show_line(){
-  printf '=%.s' {1..100} && printf '\n'
+  printf '=%.s' {1..105} && printf '\n'
 }
 
 
@@ -142,7 +144,7 @@ PACKAGE_VERSION=$(get_version_part PACKAGE_VERSION)
 PACKAGE_STAGE=$(get_version_part PACKAGE_STAGE)
 PACKAGE_RELEASE=$(get_version_part PACKAGE_RELEASE)
 
-if [ -n "${PACKAGE_STAGE}" ]; then FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_STAGE} ${PACKAGE_RELEASE}"; else FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_RELEASE}"; fi
+if [ -n "${PACKAGE_STAGE}" ]; then FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_STAGE} релиз ${PACKAGE_RELEASE}"; else FULL_VERSION="${PACKAGE_VERSION} релиз ${PACKAGE_RELEASE}"; fi
 
 #-------------------------------------------------------------------------------
 # Получаем значение из скрытого файла конфигурации
@@ -259,7 +261,7 @@ copy_ssh_keys_to_router(){
 #-------------------------------------------------------------------------------
 copy_app_to_router(){
 	dev_ip=${1}; dev_port=${2}
-
+	show_line
 	echo "${PREF}Копируем пакет на устройство и производим его установку..."
 	show_line
 #	создаем папку на устройстве для хранения упакованного пакета
@@ -268,6 +270,7 @@ copy_app_to_router(){
 #	удаляем предыдущий файл этой же версии пакета, если он там был и перемещаем его из контейнера на устройство
 	ssh -p "${dev_port}" "root@${dev_ip}" 'rm -f '"/opt/packages/${app_tar_name}" #&> /dev/null
 	scp -P "${dev_port}" "${PACKAGES_PATH}/${app_tar_name}" "root@${dev_ip}:/opt/packages/${app_tar_name}"
+
 }
 
 #-------------------------------------------------------------------------------
@@ -357,17 +360,19 @@ copy_and_install_package(){
 			container_arch=$(echo "${ARCH_BUILD}" | sed -n 's|^\([a-zA-Z]\{4,\}\)[0-9]\{0,2\}\(-[0-9]\{1,2\}.[0-9]\{1,2\}\).*|\1|p')
 
 			if [ "${container_arch}" = "${dev_arch}" ]; then
-			# копируем собранный пакет на роутер
-			copy_app_to_router "${dev_ip}" "${dev_port}"
-#				запускаем установку пакета
-			run_reinstalation_on_router "${dev_ip}" "${dev_port}"
-			show_line
+				# копируем собранный пакет на роутер
+				copy_app_to_router "${dev_ip}" "${dev_port}"
+	#				запускаем установку пакета
+				run_reinstalation_on_router "${dev_ip}" "${dev_port}"
+
 				# Запускаем тесты
 				case "${tests_ask}" in
 					YES|Yes|yes|y ) run_tests ;;
 					ASK|Ask|ask|a )
-						answer=''; read_ynq "Запустить исполнение тестов? " answer
-						[ "${answer}" = y ] && run_tests ;;
+						show_line
+						answer=''; read_ynq "Запустить исполнение тестов на устройстве? " answer
+						if [ "${answer}" = y ]; then run_tests; else show_line; fi
+						;;
 					* ) ;;
 				esac
 			else

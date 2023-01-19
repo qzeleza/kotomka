@@ -29,13 +29,13 @@ BASEDIR=$(dirname "$(dirname "${0}")")
 
 PREF='>> '
 DEBUG=NO
-APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
+
 APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/package/utils/${APP_NAME}
 APPS_PATH=${APPS_ROOT}/${APP_NAME}
 COMPILE_PATH=${APPS_PATH}/${ROOT_PATH}/${COMPILE_NAME}
 ENTWARE_PATH=${APPS_ROOT}/entware
 BUILD_CONFIG="${ENTWARE_PATH}/.config"
-PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${ROOT_PATH}/${IPK_PATH}"
+
 
 print_mess()(echo -e "${1}")
 
@@ -171,6 +171,16 @@ check_arch(){
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# Производим компиляцию пакета и обработку ошибок
+#-------------------------------------------------------------------------------
+do_compile_package(){
+	make "package/${APP_NAME}/compile" ${deb} || {
+		make "package/${APP_NAME}/compile" -j1 V=sc || feeds_update
+	}
+}
+
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим сборку пакета
 #-------------------------------------------------------------------------------
 do_package_make(){
@@ -197,11 +207,7 @@ do_package_make(){
     	}
     fi
 
-	make "package/${APP_NAME}/{clean,compile}" ${deb} || {
-		make "package/${APP_NAME}/compile" -j1 V=sc || feeds_update
-		exit 1
-
-	}
+	make "package/${APP_NAME}/clean" && do_compile_package || do_compile_package
 
 }
 
@@ -261,4 +267,3 @@ make_all(){
 }
 
 make_all
-

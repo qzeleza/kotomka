@@ -827,7 +827,7 @@ remove_arch_container(){
 # Проверяем был ли в аргументах передан флаг отладки
 #-------------------------------------------------------------------------------
 set_debug_status(){
-    if [[ "${*}" =~ -vb|debug|-v ]] ; then debug=YES; else debug=NO; fi
+    if [[ "${*}" =~ -vb|debug|-v|-deb ]] ; then debug=YES; else debug=NO; fi
     sedi "s|DEBUG=.*$|DEBUG=${debug}|" ./package.app
     echo "${*}" | sed "s/debug//g; s/-vb//g; s/-v//g;" | tr -d ' '
 }
@@ -854,56 +854,61 @@ update_me(){
 # Удаляем готовый образ и собираем его заново для запуска контейнера
 #-------------------------------------------------------------------------------
 show_help(){
-    show_line
-    echo -e "${BLUE}Котомка [kotomka] - скрипт предназначенный для быстрого развертывания среды разработки Entware"
-    echo -e "в Docker-контейнере для роутеров Keenetic с целью сборки пакетов на языках семейства Bash, С, С++.${NOCL}"
-    show_line
-    echo -e "${BLUE}Допустимые аргументы:${NOCL}"
-    show_line
-    echo "build    		[-bl] - сборка образа на основании которого будут собираться контейнеры с указанными архитектурами."
-    echo "make     		[-mk] - сборка пакета и копирование его на роутер"
-    echo "make <arch>		      - сборка пакета и копирование его на роутер для указанной/ых архитектур,"
-    echo "                 	    	где arch может принимать следующие значения: ."
-    echo "                 		all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
-    echo "                 		aarch64 - для ARCH64 архитектуры, "
-    echo "                 		mips - для MIPS архитектуры "
-    echo "                 		mipsel - для MIPSEL архитектуры"
-    echo "                 		armv5  - для ARMv5 архитектуры"
-    echo "                 		armv7-2.6 - для ARMv7 версии 2.6 архитектуры"
-	echo "                 		armv7-3.2 - для ARMv7 версии 3.2 архитектуры"
-    echo "                 		x64  - для X64 архитектуры"
-    echo "                 		x86  - для X86 архитектуры"
-    echo "make ver         	      - отображаем текущую версию собираемого пакета"
-    echo "make ver <N>		      - устанавливаем версию собираемого пакета, где номер в формате <N-stage-rel>"
-    echo "                 	    	N - номер версии, например 1.0.12"
-    echo "                 	    	stage - стадия разработки [alpha, betta, preview]"
-    echo "                 	    	rel - выпускаемый номер релиза, например 01"
-    echo "rebuild  	    	[-rb] - удаляем готовый образ и собираем его заново с последующим запуском сборки пакета"
-    echo "copy     	    	[-cp] - копирование уже собранного пакета на роутер"
-    echo "remove <arch> 		[-rm] - производим удаление контейнера."
-    echo "term     	   	[-tr] - подключение к контейнеру без исполнения скриптов под пользователем '${USER}'."
-	echo "term <arch>		      - подключение к контейнеру под пользователем '${USER}' для указанной/ых архитектур,"
-	echo "                 	    	параметр arch, такой же, как и в команде make (см. выше)."
-    echo "root     	   	[-rt] - подключение к контейнеру без исполнения скриптов под пользователем 'root'"
-	echo "root <arch>		      - подключение к контейнеру под пользователем 'root' для указанной/ых архитектур,"
-	echo "                 	    	параметр arch, такой же, как и в команде make (см. выше)."
-    echo "debug    		[-vb] - дополнительный флаг к предыдущим аргументам для запуска в режиме отладки"
-    echo "test     	   	[-ts] - запуск тестов на удаленном устройстве. "
-    echo "reset    	   	[-rs] - cбрасываем в первоначальное состояние пакет до установки языка разработки."
-    echo "update			[-up] - обновляем из github данный проект."
-    echo "help     	   	[-hl] - отображает настоящую справку"
 
-    show_line "-"
-    echo -e "Примеры запуска:"
-    show_line "-"
-    echo  " ./build.run make mips	      - запускаем сборку пакета для платформы mips."
-    echo  " ./build.run rm mips          - удаляем контейнер для платформы mips."
-    echo  " ./build.run build all        - запускаем сборку среды разработки и первоначальную сборку пакета."
-    echo  "                                для всех заданных архитектур в файле конфигурации ./build.conf"
-    echo  " ./build.run -mk -vb          - запускаем сборку пакета с опцией отладки."
-    echo  " ./build.run -cp              - копируем уже ранее собранный пакет на удаленное устройство (роутер)."
-    echo  " ./build.run term             - заходим в ранее собранный контейнер под именем разработчика."
-    show_line
+    print_line_sim "="
+    echo -e " ${BLUE}Котомка [kotomka] - скрипт предназначенный для быстрого развертывания среды разработки Entware"
+    echo -e " в Docker-контейнере для роутеров Keenetic с целью сборки пакетов на языках семейства Bash, С, С++.${NOCL}"
+    print_line_sim "="
+    echo -e " ${BLUE}Аргументы одиночные:${NOCL}"
+    print_line_sim "=" '' "${len_line}"
+    echo " build    		[-bl] - сборка образа на основании которого будут собираться контейнеры."
+    echo " rebuild  	    	[-rb] - удаляем готовый образ и собираем его заново."
+    echo " version|ver   		[-vr] - отображаем текущую версию собираемого пакета"
+    echo " version <N>		      - устанавливаем версию собираемого пакета, где номер в формате"
+    echo "                  	    	<N-stage-rel>, гду N - номер версии, например 1.0.12"
+    echo "                  	    	stage - стадия разработки [alpha, betta, preview]"
+    echo "                  	    	rel - выпускаемый номер релиза, например 01"
+	print_line_sim "="
+    echo " make     		[-mk] - сборка пакета и копирование его на роутер"
+	echo " make debug|deb       	      - сборка пакета в режиме отладки."
+    echo " copy     		[-cp] - копирование уже собранного пакета на роутер"
+    echo " term     	   	[-tr] - подключение к контейнеру под пользователем '${USER}'."
+    echo " root     	   	[-rt] - подключение к контейнеру под пользователем 'root'"
+    echo " test     	   	[-ts] - запуск тестов на удаленном устройстве. "
+    echo " reset    	   	[-rs] - cбрасываем пакет в состояние до установки языка разработки."
+    echo " update			[-up] - обновляем из github данный проект."
+    echo " help     	   	[-hl] - отображает настоящую справку"
+    print_line_sim "="
+    echo -e " ${BLUE}Аргументы с заданной архитектурой:${NOCL}"
+    print_line_sim "="
+    echo " <arch> make 		[-mk] - сборка пакета и копирование его на роутер для указанной архитектуры,"
+    echo "                  	    	где arch может принимать следующие значения: ."
+    echo "                  		all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
+    echo "                  		aarch64 - для ARCH64 архитектуры, "
+    echo "                  		mips - для MIPS архитектуры "
+    echo "                  		mipsel - для MIPSEL архитектуры"
+    echo "                  		armv5  - для ARMv5 архитектуры"
+    echo "                  		armv7-2.6 - для ARMv7 версии 2.6 архитектуры"
+	echo "                  		armv7-3.2 - для ARMv7 версии 3.2 архитектуры"
+    echo "                  		x64  - для X64 архитектуры"
+    echo "                  		x86  - для X86 архитектуры"
+    echo " <arch> copy 		[-cp] - копирование уже собранного пакета, указанной архитектуры на роутер."
+    echo " <arch> remove		[-rm] - производим удаление контейнера."
+	echo " <arch> term 		[-tr] - подключение к контейнеру под пользователем ${USER} для arch архи-ры."
+	echo " <arch> root 		[-rt] - подключение к контейнеру под пользователем root для arch архи-ры."
+    print_line_sim "="
+    echo -e " Примеры запуска:"
+    print_line_sim "="
+    echo  " ./build.run mips make 	      - запускаем сборку пакета для платформы mips."
+    echo  " ./build.run mipsel rm        - удаляем контейнер для платформы mips."
+    echo  " ./build.run build            - запускаем сборку образа среды разработки, который служит основанием"
+    echo  "                                для контейнеров всех заданных архитектур в файле конф-ции ./build.conf"
+    echo  " ./build.run make debug       - запускаем сборку с опцией отладки и выбрираем из диалога архи-ру."
+    echo  " ./build.run mipsel copy      - копируем, ранее собранный пакет на удаленное устройство с mipsel."
+    echo  " ./build.run mipsel term      - заходим в ранее собранный контейнер под именем master с mipsel."
+	echo  " ./build.run term	      - заходим в ранее собранный контейнер под именем разработчика,"
+	echo  " 			        но в отличии от варианта выше, выбрираем из диалога архи-ру запуска."
+    print_line_sim "="
 }
 
 show_line
@@ -924,21 +929,23 @@ arg_1=$(echo "${1}" | cut -d' ' -f1)
 arg_2=$(echo "${1}" | cut -d' ' -f2)
 
 case "${arg_1}" in
-	term|-tr ) 	[ -n "${arg_2}" ] && 		manager_container_to_make "" "" "${arg_2}" ;;
-	root|-rt) 	[ -n "${arg_2}" ] && 		manager_container_to_make "" "yes" "${arg_2}" ;;
 	build|-bl) 				  				build_image ;;
-	make|-mk)
-	    case  "${arg_2}" in
-	        ver* )          				package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
-	        *    )          				manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${arg_2}" ;;
-	    esac
-	    ;;
-	copy|-cp )  	        				manager_container_to_make "${SCRIPT_TO_COPY}" ;;
-    test|-ts )  	        				manager_container_to_make "${SCRIPT_TO_TEST}" ;;
     rebuild|-rb)            				rebuild_image "${SCRIPT_TO_MAKE}" ;;
-	remove|rm|del| -rm)						remove_arch_container "${arg_2}";;
 	update|-ud|-up)							update_me ;;
     help|-h|--help)         				show_help ;;
+	version|ver|-vr)						package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
+	*)    									;;
+esac
+
+case "${arg_2}" in
+
+	term|-tr ) 	[ -n "${arg_1}" ] && 		manager_container_to_make "" "" "${arg_1}" ;;
+	root|-rt) 	[ -n "${arg_1}" ] && 		manager_container_to_make "" "yes" "${arg_1}" ;;
+	make|-mk)								manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}" ;;
+	copy|-cp )  	        				manager_container_to_make "${SCRIPT_TO_COPY}" "" "${arg_1}" ;;
+    test|-ts )  	        				manager_container_to_make "${SCRIPT_TO_TEST}" "" "${arg_1}" ;;
+	remove|rm|del| -rm)						remove_arch_container "${arg_1}";;
+
 	*)
 											echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}";
                             				show_help
