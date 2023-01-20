@@ -272,9 +272,8 @@ set_dev_language(){
 	prepare_makefile
 
 #   меняем имя пакета в файле для удаленных тестов
-    tests_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_TESTS_NAME}"
-    cp -rf "../templates/tests/" "${tests_path}"
-    sedi "s|@APP_NAME|${APP_NAME}|g"                    "${tests_path}/modules/hello.bats"
+    cp -rf "../templates/tests/" "${DEV_REMOTE_TESTS_NAME}"
+    sedi "s|@APP_NAME|${APP_NAME}|g"                    "${DEV_REMOTE_TESTS_NAME}/modules/hello.bats"
 }
 
 
@@ -283,7 +282,7 @@ set_dev_language(){
 #-------------------------------------------------------------------------------
 check_dev_language(){
 
-    manifest_file=$(find ../.. -type f | grep "${DEV_COMPILE_NAME}/${arch}Makefile" | head -1)
+    manifest_file=$(find ../.. -type f | grep "${DEV_ROOT_PATH}/Makefile" | head -1)
 
     if [ -n "${manifest_file}" ]; then
         if ! cat < "${manifest_file}" | grep -qi "для ${DEVELOP_EXT}"; then
@@ -304,15 +303,13 @@ check_dev_language(){
 #-------------------------------------------------------------------------------
 prepare_code_structure(){
 
-    mkdir_when_not  "${PATH_PREFIX}${DEV_ROOT_PATH}"
     mkdir_when_not  "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_SRC_PATH}"
 
 #   создаем папку с тестами
-    tests_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_TESTS_NAME}"
-    [ -n "${DEV_TESTS_NAME}" ] && ! [ -d "${tests_path}" ] && {
-        mkdir_when_not "${tests_path}"
-        cp -rf "../templates/tests/" "${tests_path}"
-        sedi "s|@APP_NAME|${APP_NAME}|g"                    "${tests_path}/modules/hello.bats"
+    [ -n "${DEV_REMOTE_TESTS_NAME}" ] && ! [ -d "${DEV_REMOTE_TESTS_NAME}" ] && {
+        mkdir_when_not "${DEV_REMOTE_TESTS_NAME}"
+        cp -rf "../templates/tests/" "${DEV_REMOTE_TESTS_NAME}"
+        sedi "s|@APP_NAME|${APP_NAME}|g"                    "${DEV_REMOTE_TESTS_NAME}/modules/hello.bats"
     }
 #   создаем папку /opt с минимальной структурой, как на устройстве
     opt_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_OPT_PATH}"
@@ -322,11 +319,11 @@ prepare_code_structure(){
         mkdir -p "${opt_path}/etc/ndm/fs.d" "${opt_path}/etc/ndm/wan.d"
     }
 #   создаем папку /packages
-    if [ -n "${DEV_IPK_NAME}" ] && ! [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_IPK_NAME}" ]; then
-        mkdir -p "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_IPK_NAME}"
+    if [ -n "${DEV_IPK_NAME}" ] && ! [ -d "${DEV_IPK_NAME}" ]; then
+        mkdir -p "${DEV_IPK_NAME}"
     fi
 
-    if ! [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/" ]; then
+    if ! [ -d "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}" ]; then
         mkdir -p "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}${DEV_MANIFEST_DIR_NAME}"
         check_dev_language
     fi

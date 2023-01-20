@@ -46,9 +46,9 @@ print_mess()(echo -e "${1}")
 feeds_update(){
 
 	cur_path=$(pwd)
-	cd "${ENTWARE_PATH}" || exit 1
-	./scripts/feeds update ${APP_NAME}
-	./scripts/feeds install -a -p ${APP_NAME}
+	cd "${APPS_PATH}" || exit 1
+	./scripts/feeds update "${APP_NAME}"
+	./scripts/feeds install -a -p "${APP_NAME}"
 	cd "${cur_path}" || exit 1
 }
 
@@ -61,7 +61,7 @@ feeds_update_ones(){
 	feeds_file=${ENTWARE_PATH}/feeds.conf
 
 	cat < "${feeds_file}" | grep -q "${APP_NAME}" || {
-		echo "src-link ${APP_NAME} ${APP_MAKE_BUILD_PATH}" >> "${feeds_file}"
+		echo "src-link ${APP_NAME} ${APPS_PATH}/${SRC_PATH}" >> "${feeds_file}"
 		feeds_update
 	}
 
