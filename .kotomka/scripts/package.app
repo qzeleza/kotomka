@@ -60,8 +60,8 @@ feeds_update_ones(){
 
 	feeds_file=${ENTWARE_PATH}/feeds.conf
 
-	cat < ${feeds_file} | grep -q "${APP_NAME}" || {
-		echo "src-link ${APP_NAME} ${APP_MAKE_BUILD_PATH}" >> ./${feeds_file}
+	cat < "${feeds_file}" | grep -q "${APP_NAME}" || {
+		echo "src-link ${APP_NAME} ${APP_MAKE_BUILD_PATH}" >> "${feeds_file}"
 		feeds_update
 	}
 
@@ -74,13 +74,19 @@ feeds_update_ones(){
 #-------------------------------------------------------------------------------
 copy_code_files(){
 
+	_path=$(pwd)
 	# копируем данные кода в папку для компиляции
 	build_files_path=${APP_MAKE_BUILD_PATH}/files
 	rm -rf "${build_files_path}"
-    copy_dir "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${build_files_path}"
-    copy_dir "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${APP_MAKE_BUILD_PATH}"
+	mkdir -p "${build_files_path}/${OPT_PATH}"
 
+	cd "${APPS_PATH}/${ROOT_PATH}/" || exit 1
+	find "./" -name .DS_Store -exec rm {} \;
 
+    cp -rf "./${OPT_PATH}" "${build_files_path}/"
+    cp -rf "./${SRC_PATH}" "${APP_MAKE_BUILD_PATH}/"
+
+	cd "${_path}" || exit 1
 
 }
 
@@ -175,7 +181,11 @@ check_arch(){
 #-------------------------------------------------------------------------------
 do_compile_package(){
 	make "package/${APP_NAME}/compile" ${deb} || {
-		make "package/${APP_NAME}/compile" -j1 V=sc || feeds_update
+		make "package/${APP_NAME}/compile" -j1 V=sc || {
+			make clean
+			make "package/${APP_NAME}/clean"
+			feeds_update
+		}
 	}
 }
 
@@ -257,6 +267,7 @@ make_all(){
 	time_start=$(date "+%s")
 	print_compile_header										# 	печатаем заголовок компиляции
 	copy_code_files												#	копируем данные кода в папку для компиляции
+	feeds_update_ones											#   обновляем фиды, если они еще не установлены
 	create_makefile												#	создаем файл манифеста Makefile
  	do_package_make "${deb}"									# 	производим сборку пакета
 	copy_file "$(get_ipk_package_file)" "${PACKAGES_PATH}"		# 	копируем ipk файл в локальную папку paсkages
@@ -264,6 +275,7 @@ make_all(){
 	copy_and_install_package									# 	копируем и устанавливаем собранный пакет на устройство
 	show_line
 	print_compile_foot "${time_start}"							# 	печатаем футроп компиляции
+
 }
 
 make_all

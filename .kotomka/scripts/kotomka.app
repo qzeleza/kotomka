@@ -538,7 +538,7 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e "${PREF}${_user}::Контейнер '${container_name}' ${BLUE}НЕ СМОНТИРОВАН${NOCL}!"
+    echo -e "${PREF}${_user}::Контейнер '${container_name}' ${BLUE}НЕ СУЩЕСТВУЕТ${NOCL}!"
     echo "${PREF}${_user}::Производим запуск и монтирование контейнера и подключаемся к нему..."
 
     user_group_id="${U_ID}:${G_ID}"
@@ -929,11 +929,11 @@ arg_1=$(echo "${1}" | cut -d' ' -f1)
 arg_2=$(echo "${1}" | cut -d' ' -f2)
 
 case "${arg_1}" in
-	build|-bl) 				  				build_image ;;
-    rebuild|-rb)            				rebuild_image "${SCRIPT_TO_MAKE}" ;;
-	update|-ud|-up)							update_me ;;
-    help|-h|--help)         				show_help ;;
-	version|ver|-vr)						package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')" ;;
+	build|-bl) 				  				build_image; exit 0 ;;
+    rebuild|-rb)            				rebuild_image "${SCRIPT_TO_MAKE}"; exit 0  ;;
+	update|-ud|-up)							update_me; exit 0  ;;
+    help|-h|--help)         				show_help; exit 0 ;;
+	version|ver|-vr)						package_version_set "$(echo "${arg_2//ver/}" | sed -e 's/^[[:space:]]*//')"; exit 0  ;;
 	*)    									;;
 esac
 

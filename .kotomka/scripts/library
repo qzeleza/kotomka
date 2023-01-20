@@ -380,7 +380,7 @@ copy_and_install_package(){
 			fi
 
 		else
-			echo -e "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL} не доступно, ${RED}пропускаем!${NOCL}"
+			echo -e "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL} недоступно, ${RED}пропускаем!${NOCL}"
 		fi
 	done
 
