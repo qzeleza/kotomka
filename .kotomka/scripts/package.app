@@ -186,7 +186,7 @@ do_compile_package(){
 #			feeds_update
 #			make clean
 			make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc
-
+			exit 1
 		}
 }
 

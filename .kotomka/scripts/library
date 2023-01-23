@@ -86,7 +86,7 @@ DEV_IPK_NAME=../../packages
 
 APPS_ROOT=/apps
 APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${ROOT_PATH}/${IPK_PATH//..\//}"
+PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${IPK_PATH//..\//}"
 
 #-------------------------------------------------------------------------------
 # Данные учетной записи от имени которой собираем пакет
@@ -184,10 +184,10 @@ diff_len() {
 ready() {
 
 	[ -z "${1}" ] && (echo "Отсутствует текст сообщения!"; exit 1)
-	[ -z "${2}" ] && _color=${GREEN} || _color=${2}
-	[ -n "${3}" ] && new_line='\n' || new_line=''
-	text=$(echo "${1}" | tr "[[:lower:]]" "[[:upper:]]")
-	text="${color}${text}${NOCL}"
+	if [ -z "${2}" ]; then _color=${GREEN}; else _color=${2}; fi
+	if [ "${3}" = true ]; then new_line='\n'; else new_line=''; fi
+	text=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
+	text="${_color}${text}${NOCL}"
 	size=$(diff_len "${text}")
 	printf "%b%-${size}s%b${new_line}" "${text}"
 

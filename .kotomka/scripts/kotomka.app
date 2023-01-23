@@ -354,15 +354,30 @@ check_system(){
 
 
 #-------------------------------------------------------------------------------
-#  Получаем ID контейнера
+#  Получаем ID контейнера по его имени
 #-------------------------------------------------------------------------------
 get_container_id(){
     container_name=${1}
-	container_id_exited=$(docker ps | grep "${container_name}" | head -1 | cut -d' ' -f1 )
-	[ -z "${container_id_exited}" ] && container_id_exited=$(docker ps -a | grep "${container_name}" | head -1 | cut -d' ' -f1 )
-	echo "${container_id_exited}"
+	container_id=$(docker ps | grep "${container_name}" | head -1 | cut -d' ' -f1 )
+	[ -z "${container_id}" ] && container_id=$(docker ps -a | grep "${container_name}" | head -1 | cut -d' ' -f1 )
+	echo "${container_id}"
 }
 
+
+#-------------------------------------------------------------------------------
+#  Получаем список контейнеров, которые были созданы
+#  $1 - тип отображаемых контейнеров
+#	    0 или отсутствие параметра - отображаем все имеющиеся контейнеры
+#		    запущенные контейнеры помечаются звездочкой зеленого цвета
+#		1 - запущенные контейнеры
+#		2 - остановленные контейнеры
+#-------------------------------------------------------------------------------
+get_container_list(){
+	running=$(docker ps -aq --filter name="${APP_NAME}-*" --filter status=running --format "{{.Names}}" | \
+	 	   			 sed -n "s/^\(.*\)/\*\1/p")
+	exited=$(docker ps -aq --filter name="${APP_NAME}-*" --filter status=exited --format "{{.Names}}" )
+	echo -e "${running}${exited}"
+}
 
 #-------------------------------------------------------------------------------
 #  Останавливаем и удаляем контейнер
@@ -402,7 +417,7 @@ run_when_error(){
 	print_line_sim -
 
 	echo -e "${YELLOW}"
-	docker logs "${1}" --details --tail 27 | grep -E 'error|fault' -C10
+	docker logs "${1}" --details --tail 150 | grep -E 'error|fault' -A100 -B10
 	echo -e "${NOCL}"
 
 
@@ -515,7 +530,6 @@ connect_when_run(){
    	arch=${4}
    	container_name=${5}
    	_user=${USER}
-
     [ "${run_with_root}" = yes ] && _user=root
 
    	echo -e  "${PREF}${_user}::Контейнер разработки '${container_name}' ${GREEN}ЗАПУЩЕН${NOCL}"
@@ -683,8 +697,17 @@ ask_arch_to_run(){
 	extra_menu_pos="Все\tархитектуры"
 
 	list_arch_menu=${list_arch};
-	[ -n "${script_to_run}" ] && list_arch_menu="${list_arch} ${extra_menu_pos}"
-	echo -e "Доступные ${BLUE}архитектуры${NOCL} для сборки [Q/q - выход]:"
+
+	if [ -n "${script_to_run}" ]; then
+		if [ "${script_to_run}" = remove ] ; then
+			act="${RED}удаления${NOCL}";
+		else
+			act="${GREEN}сборки${NOCL}";
+			list_arch_menu="${list_arch} ${extra_menu_pos}";
+		fi
+	else act="${BLUE}терминала${NOCL}"; fi
+
+	echo -e "Доступные ${BLUE}архитектуры${NOCL} для ${act} [Q/q - выход]:"
 	show_line
 
 	for _arch_ in ${list_arch_menu} ; do
@@ -693,6 +716,7 @@ ask_arch_to_run(){
 	done
 	show_line
 	read_choice "Выберите номер позиции из списка: " "${count}" choice
+	show_line
 }
 
 
@@ -700,12 +724,19 @@ ask_arch_to_run(){
 # Печатаем заголовок для очередной сборки архитектуры
 #-------------------------------------------------------------------------------
 print_header(){
+
 	arch=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
+	user=$(echo "${2}" | tr "[:lower:]" "[:upper:]")
+	app=$(echo "${APP_NAME}" | tr "[:lower:]" "[:upper:]")
 
 	echo ""
 	echo ""
 	echo ""
-	echo -e "		АРХИТЕКТУРА ${GREEN}${arch}${NOCL}"
+
+	echo -e "		ПОЛЬЗОВАТЕЛЬ: ${GREEN}${user}${NOCL}"
+	echo -e "		       ПАКЕТ: ${GREEN}${app}${NOCL}"
+	echo -e "		 АРХИТЕКТУРА: ${GREEN}${arch}${NOCL}"
+
 	echo ""
 	echo ""
 	echo ""
@@ -715,13 +746,15 @@ print_header(){
 #-------------------------------------------------------------------------------
 # Подключаемся к контейнеру для сборки приложения в нем
 #-------------------------------------------------------------------------------
-manager_container_to_make(){
+container_manager_to_make(){
 
 	script_to_run="${1}"
 	run_with_root="${2:-no}"
 	arch_to_run=${3}
 	count=0; choice=''
 	extra_menu_pos="Все\tархитектуры"
+
+	[ "${run_with_root}" = yes ] && _user=root || _user=${USER}
 
     if is_mac_os_x ; then
         ps -x | grep 'Docker.app' | grep -vq grep || {
@@ -732,27 +765,33 @@ manager_container_to_make(){
     fi
 #    если язык разработки Shell
     if [ "${DEVELOP_EXT}" = bash ] ; then
-    	print_header "BASH"
+
+    	print_header "BASH" "${_user}"
 		show_line
         container_run_to_make "${script_to_run}" "${run_with_root}" "$(get_container_name "all")" "all"
     else
 #		если язык разработки Си или С++
-    	list_arch="$(get_arch_list)"
+    	list_arch="$(get_arch_list | tr "[:upper:]" "[:lower:]")"
 #    	если указанная архитектура присутствует в списке
-		list_size=$(echo "${list_arch}" | grep -cE '^[a-zA-Z]' | tr "[:upper:]" "[:lower:]")
+		list_size=$(echo "${list_arch}" | grep -cE '^[a-zA-Z]')
+
 		if [ -z "${arch_to_run}" ]; then
 #        	если не задана архитектура сборки - запрашиваем ее
 			ask_arch_to_run "${list_arch}" "${script_to_run}" choice
 		else
 			if [ "${arch_to_run}" = all ]; then
 #        		если архитектура - all
-				choice=$(( list_size + 1))
+				if [ -n "${script_to_run}" ] ; then
+					choice=$(( list_size + 1))
+				else
+#					если был задан аргумент all в режиме терминала (например по забывчивости)
+					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
+				fi
 			else
 #        		если указана в аргументах конкретная архитектура
 				choice=$(echo "${list_arch}" | grep -n "${arch_to_run}" | head -1 | cut -d':' -f1)
 				if [ -z "${choice}" ] ; then
-					error "${PREF}Не верно указана архитектура для сборки!"
-					show_line
+					error "${PREF}Неверно указана архитектура для запуска контейнера!"; show_line
 					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
 				fi
 			fi
@@ -765,14 +804,14 @@ manager_container_to_make(){
 				num=1;
 	#       	в случае если выбран крайний пункт в списке и это пункт "Все\tархитектуры", то..
 				for _arch in ${list_arch}; do
-					[ "${num}" -le "${list_size}" ] && print_header "${_arch}"
+					[ "${num}" -le "${list_size}" ] && print_header "${_arch}" "${_user}"
 					container_run_to_make "${script_to_run}" "${run_with_root}" "${_arch}"
 
 					num=$((num + 1))
 				done
 			else
 				arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
-				print_header "${arch}"
+				print_header "${arch}" "${_user}"
 				container_run_to_make "${script_to_run}" "${run_with_root}" "${arch}"
 			fi
 		fi
@@ -823,32 +862,89 @@ package_version_set(){
     show_line
 }
 
-
 #-------------------------------------------------------------------------------
 # Удаляем контейнер с заданной в аргументе архитектурой
 #-------------------------------------------------------------------------------
 remove_arch_container(){
 
-	arch_build=${1}
+	dc_name=${1//\*/};
+	[ -z "${2}" ] && list_dc=$(get_container_list) || list_dc="${2//\*/}"
+
+	if echo "${list_dc//\*/}" | grep -q "${dc_name}" ; then
+		ready "${PREF}Контейнер c архитектурой сборки ${dc_name} удален..."
+		container_id=$(get_container_id "${dc_name}")
+		purge_containers "${container_id}" &>/dev/null && when_ok "УСПЕШНО" || when_bad "С ОШИБКАМИ"
+	else
+		warning "Контейнер с архитектурой не существует ${dc_name}" && when_bad "пропускаем"
+	fi
+}
+#-------------------------------------------------------------------------------
+# Удаляем контейнер с заданной в аргументе архитектурой
+#-------------------------------------------------------------------------------
+manage_to_remove_arch_container(){
+
+	arch_build=${1}; choice=''
 
 	if [ "${arch_build}" ]; then
-	    if get_arch_list | grep -q "${arch_build}" ; then
-	        ready "${PREF}Контейнер c архитектурой сборки ${arch_build} удален..."
-	        container_id=$(get_container_id "${APP_NAME}-${arch_build}*")
-	        if [ "${container_id}" ]; then
-	        	purge_containers "${container_id}" &>/dev/null && when_ok "УСПЕШНО" || when_bad "С ОШИБКАМИ"
-	        else
-	            when_bad "не будет"
-	            error "${PREF}Контейнер ОТСУТСТВУЕТ!"
-	        fi
-
-
+#		 в случае, если архитектура задана
+		list_arch=$(get_container_list)
+	    if echo "${list_arch}" | grep -q "${arch_build}" ; then
+#	    	в случае, если архитектура распознана
+	        remove_arch_container "${arch_build}"
 	    else
-	        ready "${PREF}Указанная архитектура сборки" && when_bad "ОТСУТСТВУЕТ."
+	    	list_size=$(echo "${list_arch}" | grep -cE '^[*a-zA-Z]')
+	    	if [ "${list_size}" -ge 0 ]; then
+				if [ "${arch_build}" = all ]; then
+	#        		если архитектура - all
+					choice=$(( list_size + 1))
+				else
+	#        		если указана в аргументах конкретная архитектура
+					choice=$(echo "${list_arch}" | grep -n "${arch_build}" | head -1 | cut -d':' -f1)
+					if [ -z "${choice}" ] ; then
+						[[ "${arch_build}" =~ remove|rm|del|-rm ]] || {
+							error "${PREF}Неверно указана архитектура для УДАЛЕНИЯ!";
+							show_line
+						}
+						if [ "${list_size}" = 1 ]; then
+							choice=1
+						else
+							ask_arch_to_run "${list_arch}" "remove" choice
+						fi
+					fi
+				fi
+#				Обработка выбора
+				if [ "${choice}" = q ] ; then exit 1; # выход если нажали Q
+				else
+	#				если выбрали из списка
+					if [ "${choice}" -gt "${list_size}" ]; then
+	#					если выбрали элемент "Все\tархитектуры"
+						num=1;
+						for _arch in ${list_arch}; do
+							if echo "${list_dc}" | grep -q "${_arch}" ; then
+	#							если такой контейнер был ранее создан
+								remove_arch_container "${_arch}" "${list_dc}"
+							else
+								warning "Контейнер с архитектурой не существует ${_arch}" && when_bad "пропускаем"
+							fi
+							num=$((num + 1))
+						done
+					else
+	#					если выбрали конкретный вариант архитектуры
+						arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
+						if echo "${list_arch}" | grep -q "${arch}" ; then
+	#						если такой контейнер был ранее создан
+							remove_arch_container "${arch}" "${list_arch}"
+						else
+							warning "Контейнер с архитектурой не существует ${arch}" && when_bad "пропускаем"
+						fi
+					fi
+				fi
+			else
+				ready "${PREF}Контейнеры для сборки" && when_bad "ОТСУСТВУЮТ!"
+			fi
 	    fi
-
 	else
-		error "${PREF}При удалении архитектура сборки" && when_bad "НЕ ЗАДАНА!"
+		ready "${PREF}При удалении архитектура сборки" && when_bad "НЕ ЗАДАНА!"
 	fi
 	show_line
 
@@ -969,12 +1065,12 @@ esac
 
 case "${arg_2}" in
 
-	term|-tr ) 	[ -n "${arg_1}" ] && 		manager_container_to_make "" "" "${arg_1}" ;;
-	root|-rt) 	[ -n "${arg_1}" ] && 		manager_container_to_make "" "yes" "${arg_1}" ;;
-	make|-mk)								manager_container_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}" ;;
-	copy|-cp )  	        				manager_container_to_make "${SCRIPT_TO_COPY}" "" "${arg_1}" ;;
-    test|-ts )  	        				manager_container_to_make "${SCRIPT_TO_TEST}" "" "${arg_1}" ;;
-	remove|rm|del| -rm)						remove_arch_container "${arg_1}";;
+	term|-tr ) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "" "${arg_1}" ;;
+	root|-rt) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "yes" "${arg_1}" ;;
+	make|-mk)								container_manager_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}" ;;
+	copy|-cp )  	        				container_manager_to_make "${SCRIPT_TO_COPY}" "" "${arg_1}" ;;
+    test|-ts )  	        				container_manager_to_make "${SCRIPT_TO_TEST}" "" "${arg_1}" ;;
+	remove|rm|del|-rm)						manage_to_remove_arch_container "${arg_1}";;
 
 	*)
 											error "${PREF}Аргументы запуска скрипта не заданы, либо не верны!";
