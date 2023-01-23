@@ -102,8 +102,10 @@ DOCKER_FILE=${DOCKER_FILES_PATH}/Dockerfile
 #	Пути к файлам внутри контейнера
 #-------------------------------------------------------------------------------
 SCRIPTS_PATH=${APPS_ROOT}/${APP_NAME}/${DEV_NAME_PATH}/scripts
-SCRIPT_TO_MAKE=${SCRIPTS_PATH}/package.app
+#SCRIPT_TO_MAKE=${SCRIPTS_PATH}/package.app
+SCRIPT_TO_MAKE=${SCRIPTS_PATH}/make.run
 SCRIPT_TO_COPY=${SCRIPTS_PATH}/copy.app
+SCRIPT_TO_CLEAN=${SCRIPTS_PATH}/clean.app
 SCRIPT_TO_TEST=${SCRIPTS_PATH}/testsrun.app
 WORK_PATH_IN_CONTAINER="${APPS_ROOT}/${APP_NAME}/${DEV_NAME_PATH}"
 
@@ -126,11 +128,15 @@ reset_data(){
 	answer=''; read_ynq "Будут удалены все контейнеры и исходники приложения, ${RED}УВЕРЕНЫ${NOCL} [Y/N/Q]? " answer
     [ "${answer}" = y ] && {
     	show_line
+    	ready "${PREF}Данные удалены "
     	rm -rf "${PATH_PREFIX}${DEV_ROOT_PATH}"
-		purge_containers "$(docker ps -aq -f name="${APP_NAME}")" &>/dev/null
-		echo -e "${PREF}Пакет сброшен в первоначальное состояние.${NOCL}"
-		echo -e "${PREF}Папка с исходниками ${RED}${DEV_ROOT_PATH}${NOCL} удалена!${NOCL}"
-		echo -e "${PREF}Удалены все контейнеры приложения ${RED}${APP_NAME}${NOCL}!${NOCL}"
+		purge_containers "$(docker ps -aq -f name="${APP_NAME}")" &>/dev/null && {
+			when_ok
+			warning "${PREF}Пакет сброшен в первоначальное состояние.${NOCL}"
+			warning "${PREF}Папка с исходниками ${RED}${DEV_ROOT_PATH}${NOCL} удалена!${NOCL}"
+			warning "${PREF}Удалены все контейнеры приложения ${RED}${APP_NAME}${NOCL}!${NOCL}"
+		} || when_bad "с ошибками!"
+
 		show_line
     }
 
@@ -225,8 +231,8 @@ set_dev_language(){
 			;;
 	esac
 
-    echo -e "${BLUE}${PREF}Заявленным языком разработки является '${lang}'${NOCL}"
-    echo -e "${BLUE}${PREF}Производим замену файлов в соответствии с установками в ${DEV_CONFIG_NAME} ${NOCL}"
+    warning "${PREF}Заявленным языком разработки является '${lang}'"
+    warning "${PREF}Производим замену файлов в соответствии с установками в ${DEV_CONFIG_NAME}"
     show_line
 
     mainfile_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_SRC_PATH}"
@@ -247,10 +253,10 @@ set_dev_language(){
             ;;
         *)
             show_line
-            echo -e "${RED}${PREF}Не распознан язык разработки в файле ${DEV_CONFIG_FILE}${NOCL}"
-            echo -e "${BLUE}${PREF}Текущее значение DEV_LANGUAGE = ${DEV_LANGUAGE}.${NOCL}"
-            echo -e "${BLUE}${PREF}Задайте одно из значений: C (Си), CPP (C++) или BASH.${NOCL}"
-            echo -e "${BLUE}${PREF}Значения можно задавать на русском или английском.${NOCL}"
+            error "${PREF}Не распознан язык разработки в файле ${DEV_CONFIG_FILE}"
+            warning "${PREF}Текущее значение DEV_LANGUAGE = ${DEV_LANGUAGE}."
+            warning "${PREF}Задайте одно из значений: C (Си), CPP (C++) или BASH."
+            warning "${PREF}Значения можно задавать на русском или английском."
             show_line
             exit 1
             ;;
@@ -286,8 +292,8 @@ check_dev_language(){
 
     if [ -n "${manifest_file}" ]; then
         if ! cat < "${manifest_file}" | grep -qi "для ${DEVELOP_EXT}"; then
-            echo -e "${RED}${PREF}Обнаружено несоответствие файлов проекта с заявленным${NOCL}"
-            echo -e "${RED}${PREF}языком разработки для архитектуры процессора ${BLUE}${PREF}${arch}${NOCL}"
+            error "${PREF}Обнаружено несоответствие файлов проекта с заявленным"
+            error "${PREF}языком разработки для архитектуры процессора '${arch}'"
             set_dev_language
         fi
     else
@@ -396,7 +402,7 @@ run_when_error(){
 	print_line_sim -
 
 	echo -e "${YELLOW}"
-	docker logs "${1}" --details --tail 66
+	docker logs "${1}" --details --tail 27 | grep -E 'error|fault' -C10
 	echo -e "${NOCL}"
 
 
@@ -407,22 +413,22 @@ run_when_error(){
 }
 #-------------------------------------------------------------------------------
 #  Запускаем Docker exec с параметрами
-#   $1 - container_id_exited
+#   $1 - container_id
 #   $2 - скрипт для запуска внутри контейнера сразу после входа в него
 #   $3 - root, если пусто, то входим под именем текущего пользователя
 #   $4 - архитектура процессора
 #-------------------------------------------------------------------------------
 docker_exec(){
-
-    container_id_exited=${1};
+    container_id=${1};
     script_to_run=${2};
     root=${3};
     arch_build=$(echo "${4}" | tr "[:upper:]" "[:lower:]")
 
     if [ "${root}" = root ]; then user="root:root"; else user="${USER}:${GROUP}"; fi
-    if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; fi
-    docker exec \
-			--interactive --tty  \
+    if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; TERMINAL='true';
+    else TERMINAL='false'; fi
+    if ! docker exec \
+			--tty -i \
 			--workdir "${WORK_PATH_IN_CONTAINER}" \
 			--env ROUTER_LIST="${ROUTER_LIST}" \
 			--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
@@ -431,14 +437,25 @@ docker_exec(){
            	--env SRC_PATH="${DEV_SRC_PATH}" \
            	--env ARCH_BUILD="${arch_build}" \
            	--env IPK_PATH="${DEV_IPK_NAME}" \
+           	--env TERMINAL="${TERMINAL}" \
            	--user "${user}" \
-           	 "${container_id_exited}" /bin/bash ${script_to_run} || {
-           	 	container_name=$(docker ps -a -f id=${container_id_exited} --format "{{.Names}}")
-				run_when_error "${container_name}"
-               	exit 1
-        }
+           	 "${container_id}" /bin/bash ${script_to_run} ; then
+
+		container_name="$(get_container_name "${arch_build}")"
+		container_id=$(docker ps -qa  --filter name="${container_name}")
+
+		if [ -n "${script_to_run}" ] ; then
+			run_when_error "${container_name}"
+			exit 1
+#		else
+#			docker start "${container_id}"
+#			docker_exec "${container_id}" "${SCRIPT_TO_CLEAN}" "${root}" "${arch_build}"
+		fi
+   	fi
+
 }
 
+#
 #-------------------------------------------------------------------------------
 #  Запускаем Docker run с параметрами
 #   $1 - скрипт для запуска внутри контейнера сразу после входа в него
@@ -454,11 +471,12 @@ docker_run(){
     context=$(dirname "$(dirname "$(pwd)")")
 
     if [ -n "${container_name}" ] ; then name_container="--name ${container_name}"; else name_container=""; fi
- 	if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; fi
+	if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; TERMINAL='true';
+    else TERMINAL='false'; fi
 
-    docker run \
-           	--interactive --tty \
+    if ! docker run \
            	--workdir "${WORK_PATH_IN_CONTAINER}" \
+           	-dti \
 			--env ROUTER_LIST="${ROUTER_LIST}" \
            	--env ARCH_BUILD="${arch_build}" \
            	--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
@@ -466,14 +484,23 @@ docker_run(){
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
 		   	--env IPK_PATH="${DEV_IPK_NAME}" \
+			--env TERMINAL="${TERMINAL}" \
 		   	--env TZ=Europe/Moscow \
            	--user "${user}" \
            	${name_container} \
            	--mount type=bind,src="${context}",dst="${APPS_ROOT}"/"${APP_NAME}" \
-           	"$(get_image_id)" /bin/bash ${script_to_run} || {
-				run_when_error "${container_name}"
-               	exit 1
-           }
+           	"$(get_image_id)" /bin/bash &>/dev/null ; then
+
+		if [ -n "${script_to_run}" ] ; then
+			run_when_error "${container_name}"
+			exit 1
+#		else
+#
+#			docker_run "${SCRIPT_TO_CLEAN}" "${container_name}"  "${arch_build}" "${user}"
+		fi
+	else
+		docker stop ${container_name} &>/dev/null
+    fi
 }
 
 
@@ -491,7 +518,7 @@ connect_when_run(){
 
     [ "${run_with_root}" = yes ] && _user=root
 
-   	echo -e "${PREF}${_user}::Контейнер разработки '${container_name}' ${BLUE}ЗАПУЩЕН${NOCL}."
+   	echo -e  "${PREF}${_user}::Контейнер разработки '${container_name}' ${GREEN}ЗАПУЩЕН${NOCL}"
     echo "${PREF}${_user}::Производим подключение к контейнеру..."
 	echo -e "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${GREEN}${container_name}${NOCL}'"
     show_line
@@ -512,7 +539,7 @@ connect_when_stopped(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e "${PREF}${_user}::Контейнер разработки '${container_name}' смонтирован, но ${BLUE}ОСТАНОВЛЕН${NOCL}."
+    echo -e  "${PREF}${_user}::Контейнер разработки '${container_name}' смонтирован, но ${GREEN}ОСТАНОВЛЕН${NOCL}"
     echo "${PREF}${_user}::Запускаем контейнер и производим подключение к нему..."
 
     docker start "${container_id_exited}" &> /dev/null
@@ -535,7 +562,7 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e "${PREF}${_user}::Контейнер '${container_name}' ${BLUE}НЕ СУЩЕСТВУЕТ${NOCL}!"
+    echo -e "${PREF}${_user}::Контейнер '${container_name}' ${RED}НЕ СУЩЕСТВУЕТ!${NOCL}"
     echo "${PREF}${_user}::Производим запуск и монтирование контейнера и подключаемся к нему..."
 
     user_group_id="${U_ID}:${G_ID}"
@@ -552,7 +579,10 @@ connect_when_not_mounted(){
         docker_exec "${container_id_exited}" "${script_to_run}" "" "${arch}"
     else
 #    	а если контейнера нет - то создаем его и запускаем
-        docker_run "${script_to_run}" "${container_name}" "${arch}" "${user_group_id}"
+        docker_run "" "${container_name}" "${arch}" "${user_group_id}"
+		container_id=$(docker ps -qa  --filter name="${container_name}")
+        docker start "${container_id}" &> /dev/null
+        docker_exec  "${container_id}" "${1}" "${_user}" "${arch}"
     fi
 }
 
@@ -578,7 +608,7 @@ build_image(){
         "${context}/" ; then
 
         show_line
-        echo "${PREF}Docker-образ собран без ошибок."
+        ready "${PREF}Docker-образ собран без ошибок."
 
     else
     	error="${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
@@ -594,7 +624,7 @@ build_image(){
 #-------------------------------------------------------------------------------
 rebuild_image(){
 
-    echo "${PREF}Удаляем предыдущий образ '${IMAGE_NAME}'"
+    ready "${PREF}Удаляем предыдущий образ '${IMAGE_NAME}'"
     script_to_run=${1}
 
     container_id_exited=$(docker ps --filter ancestor="${IMAGE_NAME}" -q)
@@ -605,7 +635,7 @@ rebuild_image(){
         [ -n "${container_id_exited}" ] && docker rm ${container_id_exited} &> /dev/null
     fi
 
-    get_image_id && docker rmi -f "${IMAGE_NAME}"
+    get_image_id && docker rmi -f "${IMAGE_NAME}" && when_ok || when_bad
 	build_image
 }
 
@@ -631,7 +661,7 @@ container_run_to_make(){
                 connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${arch}" "${container_name}"
             else
                 build_image && {
-                	echo "${PREF}Запускаем сборку пакета в контейнере '${container_name}' ..."
+                	warning "${PREF}Запускаем сборку пакета в контейнере '${container_name}' ..."
                 	show_line
                 	manager_container_to_make "${script_to_run}" "" "${arch}"
                 }
@@ -675,7 +705,7 @@ print_header(){
 	echo ""
 	echo ""
 	echo ""
-	echo -e "		СОБИРАЕМ ДЛЯ АРХИТЕКТУРЫ ${GREEN}${arch}${NOCL}"
+	echo -e "		АРХИТЕКТУРА ${GREEN}${arch}${NOCL}"
 	echo ""
 	echo ""
 	echo ""
@@ -695,7 +725,7 @@ manager_container_to_make(){
 
     if is_mac_os_x ; then
         ps -x | grep 'Docker.app' | grep -vq grep || {
-            echo -e "${PREF}${RED}Сервис Docker не запущен! Для запуска наберите команду 'open -a Docker'${NOCL}"
+            error "${PREF}Сервис Docker не запущен! Для запуска наберите команду 'open -a Docker'"
             show_line
             exit 1
         }
@@ -721,7 +751,7 @@ manager_container_to_make(){
 #        		если указана в аргументах конкретная архитектура
 				choice=$(echo "${list_arch}" | grep -n "${arch_to_run}" | head -1 | cut -d':' -f1)
 				if [ -z "${choice}" ] ; then
-					echo -e "${PREF}${RED}Не верно указана архитектура для сборки!${NOCL}"
+					error "${PREF}Не верно указана архитектура для сборки!"
 					show_line
 					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
 				fi
@@ -763,7 +793,7 @@ package_version_set(){
         ver_main="$(echo "${ver_to_set}" | tr -d 'a-zA-Z' | cut -d '-' -f1) "
 
         if [ -z "$(echo "${ver_main}" | tr -d ' ')" ]; then
-            echo -e "${PREF}${RED}Данные о версии пакета введены некорректно!${NOCL}"
+            error "${PREF}Данные о версии пакета введены некорректно!"
         else
             if echo "${ver_to_set}" | grep -q '-' ; then
                 ver_stage="$(echo "${ver_to_set}" | cut -d '-' -f2 | tr -d '0-9') "
@@ -773,19 +803,22 @@ package_version_set(){
             else
                 ver_stage=''; ver_release=''
             fi
-            [ -z "${ver_stage}" ] && ver_main=${ver_main// /}
-            set_version_part "PACKAGE_VERSION"  "${ver_main}"
-            set_version_part "PACKAGE_STAGE"    "${ver_stage}"
-            set_version_part "PACKAGE_RELEASE"  "${ver_release}"
-            full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
-            echo "${PREF}Версия пакета '${full_ver}' успешно установлена!"
+            ready "${PREF}Версия пакета '${full_ver}' установлена..."
+            {
+				[ -z "${ver_stage}" ] && ver_main=${ver_main// /}
+				set_version_part "PACKAGE_VERSION"  "${ver_main}"
+				set_version_part "PACKAGE_STAGE"    "${ver_stage}"
+				set_version_part "PACKAGE_RELEASE"  "${ver_release}"
+				full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
+			} && when_ok || when_bad
+
         fi
     else
         ver_main="$(get_version_part     "PACKAGE_VERSION")"
         ver_stage="$(get_version_part    "PACKAGE_STAGE")"
         ver_release="$(get_version_part  "PACKAGE_RELEASE")"
         full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
-        echo "${PREF}Текущая версия пакета '${full_ver}'"
+        ready "${PREF}Текущая версия пакета " && when_ok "${full_ver}"
     fi
     show_line
 }
@@ -800,22 +833,22 @@ remove_arch_container(){
 
 	if [ "${arch_build}" ]; then
 	    if get_arch_list | grep -q "${arch_build}" ; then
-	        echo -en "${PREF}Контейнер c архитектурой сборки ${GREEN}${arch_build}${NOCL} удален..."
+	        ready "${PREF}Контейнер c архитектурой сборки ${arch_build} удален..."
 	        container_id=$(get_container_id "${APP_NAME}-${arch_build}*")
 	        if [ "${container_id}" ]; then
-	        	purge_containers "${container_id}" &>/dev/null && mess="${GREEN}УСПЕШНО.${NOCL}" || mess="${RED}С ОШИБКАМИ${NOCL}"
-	            echo -e "${mess}"
+	        	purge_containers "${container_id}" &>/dev/null && when_ok "УСПЕШНО" || when_bad "С ОШИБКАМИ"
 	        else
-	            echo -e "${RED}не будет, из-за его ОТСУТСТВИЯ.${NOCL} "
+	            when_bad "не будет"
+	            error "${PREF}Контейнер ОТСУТСТВУЕТ!"
 	        fi
 
 
 	    else
-	        echo -e "${PREF}Указанная архитектура сборки ${RED}ОТСУТСТВУЕТ.${NOCL}"
+	        ready "${PREF}Указанная архитектура сборки" && when_bad "ОТСУТСТВУЕТ."
 	    fi
 
 	else
-		echo -e "${PREF}${RED}НЕ ЗАДАНА${NOCL} архитектура сборки для удаления!"
+		error "${PREF}При удалении архитектура сборки" && when_bad "НЕ ЗАДАНА!"
 	fi
 	show_line
 
@@ -833,7 +866,7 @@ set_debug_status(){
 # Обновляем из github репозитория настоящий пакет
 #-------------------------------------------------------------------------------
 update_me(){
-	echo -n "${PREF}Обновление пакета 'Котомка' завершено..."
+	ready "${PREF}Обновление пакета 'Котомка' завершено..."
 	{
 		tmp_path="../../.tmp-update"
 		rm -rf "${tmp_path}" && mkdir "${tmp_path}" && cd "${tmp_path}" || exit 1
@@ -844,7 +877,7 @@ update_me(){
 		cd "${tmp_path}" || exit 1
 		cp -rf "${app_path}/." "../" || exit 1
 		cd .. && rm -rf "./$(basename "${tmp_path}")" || exit 1
-	} && echo -e "${GREEN}удачно!${NOCL}" || echo -e "${RED}с ошибками!${NOCL}"
+	} && when_ok "удачно!" || when_bad "с ошибками!"
 	show_line
 }
 #-------------------------------------------------------------------------------
@@ -944,7 +977,7 @@ case "${arg_2}" in
 	remove|rm|del| -rm)						remove_arch_container "${arg_1}";;
 
 	*)
-											echo -e "${RED}${PREF}Аргументы запуска скрипта не заданы, либо не верны!${NOCL}";
+											error "${PREF}Аргументы запуска скрипта не заданы, либо не верны!";
                             				show_help
     ;;
 esac

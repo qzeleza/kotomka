@@ -1,0 +1,7 @@
+#! /usr/bin/env bash
+
+[ "${TERMINAL}" = true ] || {
+	cd /apps/entware || exit 1
+	cmd=$(find /apps | grep "scripts/package.app")
+	"${cmd}"
+}

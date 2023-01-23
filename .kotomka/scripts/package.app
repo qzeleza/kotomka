@@ -22,7 +22,7 @@
 # статей, лицензии Apache License 2.0 по вышеуказанным ссылкам.
 #-------------------------------------------------------------------------------
 
-
+set -e
 
 BASEDIR=$(dirname "$(dirname "${0}")")
 . "${BASEDIR}/scripts/library" "$(dirname "${BASEDIR}")"
@@ -30,13 +30,16 @@ BASEDIR=$(dirname "$(dirname "${0}")")
 PREF='>> '
 DEBUG=NO
 
-APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/package/utils/${APP_NAME}
+MYAPPS_NAME=myapps
+PACKAGE_FINAL_PATH=package/${MYAPPS_NAME}/${APP_NAME}
+APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/${PACKAGE_FINAL_PATH}
 APPS_PATH=${APPS_ROOT}/${APP_NAME}
 COMPILE_PATH=${APPS_PATH}/${ROOT_PATH}/${COMPILE_NAME}
 ENTWARE_PATH=${APPS_ROOT}/entware
 BUILD_CONFIG="${ENTWARE_PATH}/.config"
 
-
+COMPILE_PATH=${COMPILE_PATH//\/\//\/}
+mkdir_when_not "${APP_MAKE_BUILD_PATH}"
 print_mess()(echo -e "${1}")
 
 #-------------------------------------------------------------------------------
@@ -46,9 +49,9 @@ print_mess()(echo -e "${1}")
 feeds_update(){
 
 	cur_path=$(pwd)
-	cd "${APPS_PATH}" || exit 1
+	cd "${ENTWARE_PATH}" || exit 1
 	./scripts/feeds update "${APP_NAME}"
-	./scripts/feeds install -a -p "${APP_NAME}"
+	./scripts/feeds install -a -f -p "${APP_NAME}"
 	cd "${cur_path}" || exit 1
 }
 
@@ -61,7 +64,8 @@ feeds_update_ones(){
 	feeds_file=${ENTWARE_PATH}/feeds.conf
 
 	cat < "${feeds_file}" | grep -q "${APP_NAME}" || {
-		echo "src-link ${APP_NAME} ${APPS_PATH}/${SRC_PATH}" >> "${feeds_file}"
+		path_apps=$(dirname "${APP_MAKE_BUILD_PATH}")
+		echo "src-link ${APP_NAME} ${path_apps}" >> "${feeds_file}"
 		feeds_update
 	}
 
@@ -72,21 +76,17 @@ feeds_update_ones(){
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # копируем данные кода в папку для компиляции
 #-------------------------------------------------------------------------------
-copy_code_files(){
+link_code_files(){
 
-	_path=$(pwd)
-	# копируем данные кода в папку для компиляции
-	build_files_path=${APP_MAKE_BUILD_PATH}/files
-	rm -rf "${build_files_path}"
-	mkdir -p "${build_files_path}/${OPT_PATH}"
+	app_make_build_path_files="${APP_MAKE_BUILD_PATH}/files"
+	rm -rf "${APP_MAKE_BUILD_PATH}" && mkdir -p "${app_make_build_path_files}"
 
-	cd "${APPS_PATH}/${ROOT_PATH}/" || exit 1
-	find "./" -name .DS_Store -exec rm {} \;
-
-    cp -rf "./${OPT_PATH}" "${build_files_path}/"
-    cp -rf "./${SRC_PATH}" "${APP_MAKE_BUILD_PATH}/"
-
-	cd "${_path}" || exit 1
+	if ! [ -h "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" ] ; then
+		ln -s "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${APP_MAKE_BUILD_PATH}/"
+	fi
+	if ! [ -h "${app_make_build_path_files}/${OPT_PATH}" ] ; then
+		ln -s "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${app_make_build_path_files}"
+	fi
 
 }
 
@@ -146,7 +146,8 @@ create_makefile(){
     sed -i "s|\(PKGARCH:=\).*|\1${ARCH_BUILD}|g;"  	"${make_file}"
     sed -i '/^[[:space:]]*$/d'  					"${make_file}"
 
-    cp "${make_file}" "${APP_MAKE_BUILD_PATH}/Makefile"
+#	rm -f "${APP_MAKE_BUILD_PATH}/Makefile"
+	[ -h "${APP_MAKE_BUILD_PATH}/Makefile" ] || ln -s "${make_file}" "${APP_MAKE_BUILD_PATH}/"
 }
 
 
@@ -180,13 +181,13 @@ check_arch(){
 # Производим компиляцию пакета и обработку ошибок
 #-------------------------------------------------------------------------------
 do_compile_package(){
-	make "package/${APP_NAME}/compile" ${deb} || {
-		make "package/${APP_NAME}/compile" -j1 V=sc || {
-			make clean
-			make "package/${APP_NAME}/clean"
-			feeds_update
+#	make "${PACKAGE_FINAL_PATH}/{compile,prepare,configure}" ${deb} || {
+	make "${PACKAGE_FINAL_PATH}/compile" ${deb} ||  {
+#			feeds_update
+#			make clean
+			make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc
+
 		}
-	}
 }
 
 #-------------------------------------------------------------------------------
@@ -198,32 +199,41 @@ do_package_make(){
     deb=${1}
     cd "${ENTWARE_PATH}" || exit 1
 
-	rm -f /apps/entware/tmp/info/.files-* /apps/entware/tmp/info/.overrides-*
-	find /apps/entware/ -type f -name '.files-packageinfokageinfo*' -exec rm {} \;
+#	rm -f /apps/entware/tmp/info/.files-* /apps/entware/tmp/info/.overrides-*
+#	find /apps/entware/ -type f -name '.files-packageinfokageinfo*' -exec rm {} \;
+
 #	удаляем предыдущую версию пакета ipk перед сборкой текущей версии
     rm -f "$(get_ipk_package_file)"
+#	make clean
 
     if ! grep -q "${APP_NAME}" "${BUILD_CONFIG}" ; then
 #		Если имени нашего пакета нет в конфиг-файле меню ядра, то добавляем его
     	make oldconfig <<< m
 
-    	make tools/install ${deb} || {
-    		make tools/install -j1 V=sc || make clean
-    		exit 1
-    	}
+#    	make tools/install ${deb} || {
+#    		make tools/install -j1 V=sc || make clean
+#    		exit 1
+#    	}
     	make toolchain/install ${deb} || {
     		make toolchain/install -j1 V=sc || make clean
     		exit 1
     	}
     fi
 
-	make "package/${APP_NAME}/clean" && do_compile_package || do_compile_package
+	make "${PACKAGE_FINAL_PATH}/clean" || {
+#		make "${PACKAGE_FINAL_PATH}/prepare" USE_SOURCE_DIR="${APP_MAKE_BUILD_PATH}/${SRC_PATH}" && {
+			do_compile_package || {
+#				make "package/${MYAPPS_NAME}/${APP_NAME}/clean" -j1 V=sc
+				do_compile_package
+#			}
+		}
+	} && do_compile_package
 
 }
 
 # cd /apps/entware && make menuconfig
 # cd /apps/entware && ll /apps/entware/packages/utils/samovar/ &&  cat /apps/entware/packages/utils/kotomka/Makefile
-# &&  make package/samovar/compile -j1 V=sc
+# &&  make clean && make package/samovar/{clean,compile} -j1 V=sc
 
 #
 
@@ -256,6 +266,14 @@ print_compile_foot(){
 	show_line
 }
 
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# Производим подготовительные действия: убираем все .DS_Store от мака
+# Удаляем из памяти все дерево предыдущего процесса сборки
+#-------------------------------------------------------------------------------
+prepare_to_run(){
+	find "${APPS_PATH}" -name .DS_Store -exec rm -f {} \;
+}
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
@@ -264,18 +282,19 @@ print_compile_foot(){
 #-------------------------------------------------------------------------------
 make_all(){
 
+	prepare_to_run
 	time_start=$(date "+%s")
 	print_compile_header										# 	печатаем заголовок компиляции
-	copy_code_files												#	копируем данные кода в папку для компиляции
+	link_code_files												#	копируем данные кода в папку для компиляции
 	feeds_update_ones											#   обновляем фиды, если они еще не установлены
-	create_makefile												#	создаем файл манифеста Makefile
- 	do_package_make "${deb}"									# 	производим сборку пакета
-	copy_file "$(get_ipk_package_file)" "${PACKAGES_PATH}"		# 	копируем ipk файл в локальную папку paсkages
-	show_line
-	copy_and_install_package									# 	копируем и устанавливаем собранный пакет на устройство
-	show_line
-	print_compile_foot "${time_start}"							# 	печатаем футроп компиляции
-
+	create_makefile && {										#	создаем файл манифеста Makefile
+		do_package_make "${deb}"								# 	производим сборку пакета
+		copy_file "$(get_ipk_package_file)" "${PACKAGES_PATH}"	# 	копируем ipk файл в локальную папку paсkages
+		show_line
+		copy_and_install_package								# 	копируем и устанавливаем собранный пакет на устройство
+		show_line
+		print_compile_foot "${time_start}"						# 	печатаем футроп компиляции
+	}
 }
 
-make_all
+make_all || kill -9 "-$(pgrep -f make.run)"
