@@ -393,7 +393,7 @@ print_error_log_line(){
 
 	mess=${1}; sim=${2:--}
 	len_mess=${#mess}
-	sim_len=$((100-len_mess-4))
+	sim_len=$((LENGHT-len_mess-3))
 	sim_len=$((sim_len/2))
 
 	printf "${RED}%b%${sim_len}s${NOCL}" " " | tr ' ' "${sim}"
@@ -407,17 +407,18 @@ print_error_log_line(){
 run_when_error(){
 
 	container_id_or_name=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
-	error_tag="${RED}ОШИБКА${NOCL}"
-
+#	error_tag="${RED}ОШИБКА${NOCL}"
+	errors_list='error|fault'
+	echo ''
 	show_line;
-	echo -e "${error_tag} ${PREF}${BLUE}В ПРОЦЕССЕ СБОРКИ ПАКЕТА ВОЗНИКЛИ ОШИБКИ${NOCL}"
+	center "${RED}В ПРОЦЕССЕ СБОРКИ ПАКЕТА ВОЗНИКЛИ ОШИБКИ${NOCL}"
 	show_line
 
 	print_error_log_line "НАЧАЛО ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬇'
 	print_line_sim -
 
 	echo -e "${YELLOW}"
-	docker logs "${1}" --details --tail 150 | grep -E 'error|fault' -A100 -B10
+	docker logs "${1}" --details --tail 150 | grep -iE "${errors_list}" -A100 -B10
 	echo -e "${NOCL}"
 
 
@@ -532,9 +533,8 @@ connect_when_run(){
    	_user=${USER}
     [ "${run_with_root}" = yes ] && _user=root
 
-   	echo -e  "${PREF}${_user}::Контейнер разработки '${container_name}' ${GREEN}ЗАПУЩЕН${NOCL}"
-    echo "${PREF}${_user}::Производим подключение к контейнеру..."
-	echo -e "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${GREEN}${container_name}${NOCL}'"
+   	echo -e  "${PREF}Контейнер разработки '${container_name}' ${GREEN}ЗАПУЩЕН${NOCL}"
+    ready "${PREF}Производим подключение..."
     show_line
     docker_exec "${container_id_running}" "${script_to_run}" "${_user}" "${arch}"
 }
@@ -553,13 +553,10 @@ connect_when_stopped(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e  "${PREF}${_user}::Контейнер разработки '${container_name}' смонтирован, но ${GREEN}ОСТАНОВЛЕН${NOCL}"
-    echo "${PREF}${_user}::Запускаем контейнер и производим подключение к нему..."
-
-    docker start "${container_id_exited}" &> /dev/null
-	echo -e "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${GREEN}${container_name}${NOCL}'"
+    echo -e  "${PREF}Контейнер разработки '${container_name}' смонтирован, но ${GREEN}ОСТАНОВЛЕН${NOCL}"
+	ready "${PREF}Монтируем контейнер '${container_name}'..."
+    docker start "${container_id_exited}" &> /dev/null && when_ok || when_bad
     show_line
-
     docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
 
 }
@@ -576,28 +573,31 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e "${PREF}${_user}::Контейнер '${container_name}' ${RED}НЕ СУЩЕСТВУЕТ!${NOCL}"
-    echo "${PREF}${_user}::Производим запуск и монтирование контейнера и подключаемся к нему..."
+    echo -e "${PREF}Контейнера '${container_name}' ${RED}НЕ СУЩЕСТВУЕТ!${NOCL}"
+
 
     user_group_id="${U_ID}:${G_ID}"
     [ -z "${script_to_run}" ] && [ "${run_with_root}" = yes ] && user_group_id="root:root";
 
-    echo -e "${PREF}ЗАХОДИМ ВНУТРЬ КОНТЕЙНЕРА '${GREEN}${container_name}${NOCL}'"
-    show_line
+#    container_id_exited=$(docker ps -aq --filter name="${container_name}" --filter status=exited )
+#
+#    if [ -n "${container_id_exited}" ] ; then
+#    	#    Запускаем остановленный контейнер
+#    	ready "${PREF}Монтируем контейнер '${container_name}'..."
+#        docker start "${container_name}" &> /dev/null
+#        docker_exec "${container_id_exited}" "${script_to_run}" "" "${arch}"
+#    else
 
-    container_id_exited=$(docker ps -aq --filter name="${container_name}" --filter status=exited )
+#   а если контейнера нет - то создаем его и запускаем
+	ready "${PREF}Создаем контейнер. Ожидайте, займет некоторое время..."
+	docker_run "" "${container_name}" "${arch}" "${user_group_id}" && when_ok || when_bad
+	container_id=$(docker ps -qa  --filter name="${container_name}")
 
-    if [ -n "${container_id_exited}" ] ; then
-    	#    Запускаем остановленный контейнер
-        docker start "${container_name}" &> /dev/null
-        docker_exec "${container_id_exited}" "${script_to_run}" "" "${arch}"
-    else
-#    	а если контейнера нет - то создаем его и запускаем
-        docker_run "" "${container_name}" "${arch}" "${user_group_id}"
-		container_id=$(docker ps -qa  --filter name="${container_name}")
-        docker start "${container_id}" &> /dev/null
-        docker_exec  "${container_id}" "${1}" "${_user}" "${arch}"
-    fi
+	ready "${PREF}Монтируем контейнер '${container_name}'..."
+	docker start "${container_id}" &> /dev/null && when_ok || when_bad
+	show_line
+	docker_exec  "${container_id}" "${1}" "${_user}" "${arch}"
+#    fi
 }
 
 #-------------------------------------------------------------------------------
@@ -731,13 +731,11 @@ print_header(){
 
 	echo ""
 	echo ""
-	echo ""
 
 	echo -e "		ПОЛЬЗОВАТЕЛЬ: ${GREEN}${user}${NOCL}"
 	echo -e "		       ПАКЕТ: ${GREEN}${app}${NOCL}"
 	echo -e "		 АРХИТЕКТУРА: ${GREEN}${arch}${NOCL}"
 
-	echo ""
 	echo ""
 	echo ""
 	show_line

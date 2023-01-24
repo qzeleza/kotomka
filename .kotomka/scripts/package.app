@@ -30,8 +30,7 @@ BASEDIR=$(dirname "$(dirname "${0}")")
 PREF='>> '
 DEBUG=NO
 
-MYAPPS_NAME=myapps
-PACKAGE_FINAL_PATH=package/${MYAPPS_NAME}/${APP_NAME}
+PACKAGE_FINAL_PATH=package/${USER}/${APP_NAME}
 APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/${PACKAGE_FINAL_PATH}
 APPS_PATH=${APPS_ROOT}/${APP_NAME}
 COMPILE_PATH=${APPS_PATH}/${ROOT_PATH}/${COMPILE_NAME}
@@ -81,12 +80,28 @@ link_code_files(){
 	app_make_build_path_files="${APP_MAKE_BUILD_PATH}/files"
 	rm -rf "${APP_MAKE_BUILD_PATH}" && mkdir -p "${app_make_build_path_files}"
 
-	if ! [ -h "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" ] ; then
-		ln -s "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${APP_MAKE_BUILD_PATH}/"
+#	Делаем линки только на файлы разработки, в противном случае
+#	(если сделать линк на папку) тут будут появляться файлы
+#	задействованные в сборке зависимыми пакетами.
+	if ! [ -d "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" ] ; then
+		src_dir="${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}"
+		mkdir -p "${APP_MAKE_BUILD_PATH}/${SRC_PATH}"
+		for _file in $(find ${src_dir} -type f);  do
+        	ln -s "${_file}" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}/"
+    	done
+
 	fi
+#	Делаем линк на Makefile (файл манифеста)
 	if ! [ -h "${app_make_build_path_files}/${OPT_PATH}" ] ; then
 		ln -s "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${app_make_build_path_files}"
 	fi
+
+#	if ! [ -d "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" ] ; then
+#		cp -rf "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${APP_MAKE_BUILD_PATH}/"
+#	fi
+#	if ! [ -d "${app_make_build_path_files}/${OPT_PATH}" ] ; then
+#		cp -rf "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${app_make_build_path_files}"
+#	fi
 
 }
 
@@ -147,7 +162,8 @@ create_makefile(){
     sed -i '/^[[:space:]]*$/d'  					"${make_file}"
 
 #	rm -f "${APP_MAKE_BUILD_PATH}/Makefile"
-	[ -h "${APP_MAKE_BUILD_PATH}/Makefile" ] || ln -s "${make_file}" "${APP_MAKE_BUILD_PATH}/"
+#	[ -f "${APP_MAKE_BUILD_PATH}/Makefile" ] || cp -f "${make_file}" "${APP_MAKE_BUILD_PATH}"
+	[ -h "${APP_MAKE_BUILD_PATH}/Makefile" ] || ln -s "${make_file}" "${APP_MAKE_BUILD_PATH}"
 }
 
 
@@ -178,9 +194,25 @@ check_arch(){
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
+# Установка заплатки для решения проблемы
+# с ошибкой 'file lt~obsolete.m4 not exist'
+#-------------------------------------------------------------------------------
+aclocal_patch(){
+
+	m4_path=/apps/entware/package/master/samovar/src/libhttpserver-0.18.2/m4
+	aclocal_path=/apps/entware/staging_dir/host/share/aclocal
+	aclocal_files="libtool.m4,lt~obsolete.m4,ltoptions.m4,ltsugar.m4,ltversion.m4"
+
+	rm -f "${m4_path}/{${aclocal_files}}"
+	ln -s "${aclocal_path}/{${aclocal_files}}" "${m4_path}"
+}
+#-------------------------------------------------------------------------------
+# ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим компиляцию пакета и обработку ошибок
 #-------------------------------------------------------------------------------
 do_compile_package(){
+
+#	aclocal_patch
 #	make "${PACKAGE_FINAL_PATH}/{compile,prepare,configure}" ${deb} || {
 	make "${PACKAGE_FINAL_PATH}/compile" ${deb} ||  {
 #			feeds_update
@@ -234,6 +266,7 @@ do_package_make(){
 # cd /apps/entware && make menuconfig
 # cd /apps/entware && ll /apps/entware/packages/utils/samovar/ &&  cat /apps/entware/packages/utils/kotomka/Makefile
 # &&  make clean && make package/samovar/{clean,compile} -j1 V=sc
+
 
 #
 
