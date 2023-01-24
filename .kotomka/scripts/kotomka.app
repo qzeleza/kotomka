@@ -64,7 +64,7 @@ escape()(echo "${1}" | sed 's|\/|\\/|g')
 #-------------------------------------------------------------------------------
 # Получаем необходимую информацию о версии пакета
 #-------------------------------------------------------------------------------
-get_version_part(){
+get_version(){
 	part=${1}
 	cat < "${DEV_CONFIG_FILE}" | grep "${part}" | cut -d'=' -f2
 }
@@ -79,9 +79,9 @@ set_version_part(){
 
 
 #-------------------------------------------------------------------------------
-PACKAGE_VERSION=$(get_version_part PACKAGE_VERSION)
-PACKAGE_STAGE=$(get_version_part PACKAGE_STAGE)
-PACKAGE_RELEASE=$(get_version_part PACKAGE_RELEASE)
+PACKAGE_VERSION=$(get_version PACKAGE_VERSION)
+PACKAGE_STAGE=$(get_version PACKAGE_STAGE)
+PACKAGE_RELEASE=$(get_version PACKAGE_RELEASE)
 #-------------------------------------------------------------------------------
 FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_RELEASE}";
 [ -n "${PACKAGE_STAGE}" ] && FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_STAGE} ${PACKAGE_RELEASE}";
@@ -167,7 +167,7 @@ prepare_makefile(){
 
     make_file="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/Makefile"
 
-    sed -i "${SEP}" "s/@APP_NAME/$(escape "${APP_NAME}")/g; \
+    sed -i "${SEP}" "s/@APP_NAME/$(escape "${PACKAGE_NAME}")/g; \
          s/@PACKAGE_VERSION/$(escape "${PACKAGE_VERSION}" | tr -d ' ')/g; \
          s/@PACKAGE_STAGE/$(escape "${PACKAGE_STAGE}" | tr -d ' ')/g; \
          s/@APP_ROUTER_DIR/${app_router_dir}/g; \
@@ -393,7 +393,7 @@ print_error_log_line(){
 
 	mess=${1}; sim=${2:--}
 	len_mess=${#mess}
-	sim_len=$((LENGHT-len_mess-3))
+	sim_len=$((LENGHT-len_mess))
 	sim_len=$((sim_len/2))
 
 	printf "${RED}%b%${sim_len}s${NOCL}" " " | tr ' ' "${sim}"
@@ -417,7 +417,7 @@ run_when_error(){
 	print_error_log_line "НАЧАЛО ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬇'
 	print_line_sim -
 
-	echo -e "${YELLOW}"
+	echo -ne "${YELLOW}"
 	docker logs "${1}" --details --tail 150 | grep -iE "${errors_list}" -A100 -B10
 	echo -e "${NOCL}"
 
@@ -452,6 +452,7 @@ docker_exec(){
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
            	--env ARCH_BUILD="${arch_build}" \
+			--env APP_NAME="${APP_NAME}" \
            	--env IPK_PATH="${DEV_IPK_NAME}" \
            	--env TERMINAL="${TERMINAL}" \
            	--user "${user}" \
@@ -500,6 +501,7 @@ docker_run(){
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
 		   	--env IPK_PATH="${DEV_IPK_NAME}" \
+			--env APP_NAME="${APP_NAME}" \
 			--env TERMINAL="${TERMINAL}" \
 		   	--env TZ=Europe/Moscow \
            	--user "${user}" \
@@ -533,8 +535,8 @@ connect_when_run(){
    	_user=${USER}
     [ "${run_with_root}" = yes ] && _user=root
 
-   	echo -e  "${PREF}Контейнер разработки '${container_name}' ${GREEN}ЗАПУЩЕН${NOCL}"
-    ready "${PREF}Производим подключение..."
+   	ready "${PREF}Контейнер разработки ${BLUE}${container_name}${NOCL}" && when_ok "ЗАПУЩЕН"
+    ready "${PREF}Производим подключение..." && when_ok
     show_line
     docker_exec "${container_id_running}" "${script_to_run}" "${_user}" "${arch}"
 }
@@ -553,8 +555,8 @@ connect_when_stopped(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e  "${PREF}Контейнер разработки '${container_name}' смонтирован, но ${GREEN}ОСТАНОВЛЕН${NOCL}"
-	ready "${PREF}Монтируем контейнер '${container_name}'..."
+    ready  "${PREF}Контейнер разработки ${BLUE}${container_name}${NOCL} смонтирован, но..." && when_bad "ОСТАНОВЛЕН"
+	ready "${PREF}Монтируем контейнер..."
     docker start "${container_id_exited}" &> /dev/null && when_ok || when_bad
     show_line
     docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
@@ -573,7 +575,7 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e "${PREF}Контейнера '${container_name}' ${RED}НЕ СУЩЕСТВУЕТ!${NOCL}"
+    echo -e "${PREF}Контейнера ${BLUE}${container_name}${NOCL}" && when_bad "НЕ СУЩЕСТВУЕТ"
 
 
     user_group_id="${U_ID}:${G_ID}"
@@ -593,7 +595,7 @@ connect_when_not_mounted(){
 	docker_run "" "${container_name}" "${arch}" "${user_group_id}" && when_ok || when_bad
 	container_id=$(docker ps -qa  --filter name="${container_name}")
 
-	ready "${PREF}Монтируем контейнер '${container_name}'..."
+	ready "${PREF}Монтируем контейнер ${BLUE}${container_name}${NOCL}..."
 	docker start "${container_id}" &> /dev/null && when_ok || when_bad
 	show_line
 	docker_exec  "${container_id}" "${1}" "${_user}" "${arch}"
@@ -840,6 +842,7 @@ package_version_set(){
             else
                 ver_stage=''; ver_release=''
             fi
+            full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
             ready "${PREF}Версия пакета '${full_ver}' установлена..."
             {
 				[ -z "${ver_stage}" ] && ver_main=${ver_main// /}
@@ -851,9 +854,9 @@ package_version_set(){
 
         fi
     else
-        ver_main="$(get_version_part     "PACKAGE_VERSION")"
-        ver_stage="$(get_version_part    "PACKAGE_STAGE")"
-        ver_release="$(get_version_part  "PACKAGE_RELEASE")"
+        ver_main="$(get_version     "PACKAGE_VERSION")"
+        ver_stage="$(get_version    "PACKAGE_STAGE")"
+        ver_release="$(get_version  "PACKAGE_RELEASE")"
         full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
         ready "${PREF}Текущая версия пакета " && when_ok "${full_ver}"
     fi
@@ -869,7 +872,7 @@ remove_arch_container(){
 	[ -z "${2}" ] && list_dc=$(get_container_list) || list_dc="${2//\*/}"
 
 	if echo "${list_dc//\*/}" | grep -q "${dc_name}" ; then
-		ready "${PREF}Контейнер c архитектурой сборки ${dc_name} удален..."
+		ready "${PREF}Удаляем контейнер c архитектурой ${dc_name}..."
 		container_id=$(get_container_id "${dc_name}")
 		purge_containers "${container_id}" &>/dev/null && when_ok "УСПЕШНО" || when_bad "С ОШИБКАМИ"
 	else

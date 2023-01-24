@@ -35,6 +35,8 @@ NOCL="\033[m";
 PREF='>> '
 
 
+
+
 #-------------------------------------------------------------------------------
 # Относительные к корневой директории проекта пути
 # к файлам источникам (файлам разработки)
@@ -85,8 +87,9 @@ DEV_IPK_NAME=../../packages
 
 
 APPS_ROOT=/apps
-APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${IPK_PATH//..\//}"
+#APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
+#APP_NAME=$PACKAGE_NAME
+PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${DEV_IPK_NAME//..\//}"
 
 #-------------------------------------------------------------------------------
 # Данные учетной записи от имени которой собираем пакет
@@ -98,7 +101,10 @@ USER=master; GROUP=staff; U_ID=5001; G_ID=5001
 #-------------------------------------------------------------------------------
 copy_file() {
 	[ -d "${2}" ] || mkdir -p "${2}"
-	ready "Копируем ${1} в папку ${2}"
+	show_line
+	echo -e "${PREF}Копируем файл..."
+	echo -e "${PREF}${GREEN}${1}${NOCL}"
+	echo -e "${PREF}в папку ${BLUE}${2}${NOCL}"
     cp -f "${1}" "${2}"
 }
 
@@ -162,14 +168,45 @@ read_choice(){
 #
 #-------------------------------------------------------------------------------
 LENGTH=86
+
+#-------------------------------------------------------------------------------
+#  Печатаем заданный текст в указанной позиции курсора - направление вперед
+#  $1 - Направление установки курсора '>' - вперед и '<' - назад
+#  $2 - число позиции на которое передвинется текст текст
+#  $1 - передаваемый тест
+#-------------------------------------------------------------------------------
+cursor_set(){
+#set -x
+	[ -d "${PACKAGES_PATH}" ] && added=5 || added=0
+	act=${1}; pos=$((${2}+added)); text=${3}
+	if [ "${act}" = '>' ]; then act=C; home='\033[1000D'; else act=D; home=''; fi
+	echo -ne "${home}\033[${pos}${act}${text}"
+#set +x
+}
+
+
 #-------------------------------------------------------------------------------
 #  Вычисляем разницу между длинной переданной строки и
 #  заданной шириной печати - LENGTH
 #-------------------------------------------------------------------------------
 diff_len() {
-	charlen=$(echo "${1}" | sed -r "s/[\]033\[([0-9]{1,3}(;[0-9]{1,2})?)?[mGK]//g")
-	charlen=${#charlen}
-	echo $(( LENGTH - charlen ))
+#	set -x
+#	text_="$(echo ${1} | sed 's/\x1B\[[0-9;]\{1,\}[A-Za-z]//g')"
+	text_=${1//>> /}
+	len__="${#text_}"
+
+	text_=${text_//\\033\[1\;31m/}
+	text_=${text_//\\033\[1\;32m/}
+	text_=${text_//\\033\[36m/}
+	text_=${text_//\\033\[33m/}
+	text_=${text_//\\033\[m/}
+
+	len__="${#text_}"
+
+	len__="$(echo -n "${text_}" | wc -m)"
+	res__=$((LENGTH-len__))
+	echo ${res__}
+set +x
 }
 
 
@@ -178,7 +215,7 @@ diff_len() {
 # 	$1 - текст
 # ------------------------------------------------------------------------------------------
 center() {
-	diff=$((LENGTH-${#1}))
+	diff=$(diff_len "${1}")
   	right=$((diff/2))
   	left=$((diff - right))
   	text=$(printf "%*s%s%*s\n" "${left}" "" "${1}" "${right}" "")
@@ -192,20 +229,27 @@ center() {
 #  результат которой описывается в $1.
 #  Используется совместно с функциями when_ok и when_bad
 #
-#  $1 - передаваемый текст (обязательный параметр)
-#  $2 - цвет текста в виде одной из переменной текста, по умолчанию ${GREEN}
-#  $3 - фаг указывает на наличие печати новой строки после текста
+#  $1 - передаваемый текст (обязательный параметр), по умолчанию печатаем
+#  		в нижнем регистре, для переключения в верхний необходимо в начале
+#  		предложения поставить два символа 'U:' или 'U|' или 'U-'
+#  $2 - цвет текста в виде одной из переменной текста, по умолчанию - без цвета
+#  $3 - флаг указывает на наличие печати новой строки после текста
 #-------------------------------------------------------------------------------
 ready() {
 
 	[ -z "${1}" ] && (echo "Отсутствует текст сообщения!"; exit 1)
-	if [ -z "${2}" ]; then _color=${GREEN}; else _color=${2}; fi
+	if [ -z "${2}" ]; then _color=''; else _color=${2}; fi
+	if [ -z "${_color}" ]; then _end=''; else _end=${NOCL}; fi
 	if [ "${3}" = true ]; then new_line='\n'; else new_line=''; fi
-	text=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
-	text="${_color}${text}${NOCL}"
-	size=$(diff_len "${text}")
-	printf "%b%-${size}s%b${new_line}" "${text}"
-
+	if [[ "${1}" =~ U: ]] ; then
+		text=$(echo "${1}" | sed 's/^U[|:-]//' | tr "[:lower:]" "[:upper:]");
+	else text="${1}"; fi
+#	if ! [[ "${text}" =~ 033[ ]]; then  text="${_color}${text}${_end}"; fi
+#	text="${_color}${text}${_end}";
+	echo -ne "${_color}${text}${_end}"
+	cursor_set '>' "$((LENGTH - 10))"
+#	size=$(diff_len "${text}")
+#	printf "%b%-${size}s%b${new_line}" "${text}"
 }
 
 #-------------------------------------------------------------------------------
@@ -243,10 +287,12 @@ warning() {
 #   $2 - цвет текста в виде одной из переменной текста, по умолчанию ${GREEN}
 #-------------------------------------------------------------------------------
 show_result() {
+
 	[ -z "${1}" ] && text='OK' || text=${1}
 	[ -z "${2}" ] && color="${BLUE}" || color=${2}
-	text=$(echo "${1}" | tr "[[:lower:]]" "[[:upper:]]")
-  	echo -e "${color}${text}${NOCL}"
+	text=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
+	cursor_set '>' "$((LENGTH - ${#text} - 1))" "${color}${text}${NOCL}"
+	echo ''
 }
 
 
@@ -284,8 +330,10 @@ when_bad() {
 #
 #-------------------------------------------------------------------------------
 print_line_sim(){
-	len=$((LENGTH + 12))
+
+	len=$((LENGTH))
 	sim=${1:--}; nspaces=${2:-0}; len=${3:-$len}
+	diff=$((len - nspaces))
 	printf "%${nspaces}s"
 	printf "%$((len - nspaces))s\n" | tr ' ' "${sim}"
 }
@@ -302,15 +350,16 @@ show_line(){
 # Получаем необходимую информацию о версии пакета
 #-------------------------------------------------------------------------------
 get_version_part(){
+
 	value=${1}
-	cat < "${DEV_CONFIG_FILE}" | grep "${value}" | cut -d'=' -f2 | tr -d ' '
+	make_file="${APPS_ROOT}/${APP_NAME}${DEV_ROOT_PATH//./}/Makefile"
+
+	if [ "${value}" = PACKAGE_VERSION ]; then cat < "${make_file}" | sed -n "s/PKG_VERSION:=\(.*\)/\1/p"; fi
+	if [ "${value}" = PACKAGE_STAGE ]; 	 then cat < "${make_file}" | sed -n "s/PKG_RELEASE:=\([a-zA-Z]\{3,\}\).*/\1/p"; fi
+	if [ "${value}" = PACKAGE_RELEASE ]; then cat < "${make_file}" | sed -n "s/PKG_RELEASE:=.*\([0-9]\{1,3\}\)/\1/p"; fi
+
 }
 
-PACKAGE_VERSION=$(get_version_part PACKAGE_VERSION)
-PACKAGE_STAGE=$(get_version_part PACKAGE_STAGE)
-PACKAGE_RELEASE=$(get_version_part PACKAGE_RELEASE)
-
-if [ -n "${PACKAGE_STAGE}" ]; then FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_STAGE} релиз ${PACKAGE_RELEASE}"; else FULL_VERSION="${PACKAGE_VERSION} релиз ${PACKAGE_RELEASE}"; fi
 
 #-------------------------------------------------------------------------------
 # Получаем значение из скрытого файла конфигурации
@@ -322,15 +371,20 @@ get_config_value(){
 #-------------------------------------------------------------------------------
 # Получаем имя приложения из названия корневой папки
 #-------------------------------------------------------------------------------
-APP_NAME=$(echo "${BASEDIR}" | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
+#APP_NAME=$(echo "${BASEDIR}" | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
 
 #-------------------------------------------------------------------------------
 # Получаем имя пакета для сборки
 #-------------------------------------------------------------------------------
 get_full_package_version(){
-	if [ -n "${PACKAGE_STAGE}" ] ; then stg="-${PACKAGE_STAGE}"; else stg=""; fi
-	if [ -n "${PACKAGE_RELEASE}" ] ; then rel="-${PACKAGE_RELEASE}"; else rel=""; fi
-	echo "${PACKAGE_VERSION}${stg}${rel}"
+
+	package_version=$(get_version_part PACKAGE_VERSION)
+	package_stage=$(get_version_part PACKAGE_STAGE)
+	package_release=$(get_version_part PACKAGE_RELEASE)
+
+	if [ -n "${package_stage}" ] ; then stg="-${package_stage}"; else stg=""; fi
+	if [ -n "${package_release}" ] ; then rel="-${package_release}"; else rel=""; fi
+	echo "${package_version}${stg}${rel}"
 }
 
 
@@ -345,7 +399,6 @@ get_ipk_package_name(){
 # Получаем полный путь до пакета сборки в контейнере
 #-------------------------------------------------------------------------------
 get_ipk_package_file(){
-
     echo "${APPS_ROOT}/entware/bin/targets/${ARCH_BUILD}/generic-glibc/packages/$(get_ipk_package_name)"
 }
 
@@ -374,25 +427,18 @@ get_key_file(){
 # Производим удаление и установку пакета
 #-------------------------------------------------------------------------------
 run_reinstalation_on_router(){
+
 	dev_ip=${1}; dev_port=${2}
 
-	ssh -p "${dev_port}" "root@${dev_ip}" 'opkg remove '"${APP_NAME}"
+	ready "${PREF}Производим удаление пакета с устройства"
+	ssh -p "${dev_port}" "root@${dev_ip}" 'opkg remove '"${APP_NAME}" &>/dev/null && when_ok || when_bad
+
+	ready "${PREF}Производим установку пакета на устройство"
 	cmd='[ -d /opt/packages ] || mkdir /opt/packages; opkg install /opt/packages/'"$(get_ipk_package_name)"
-	ssh -p "${dev_port}" "root@${dev_ip}" "${cmd}" #<<< 2
+	ssh -p "${dev_port}" "root@${dev_ip}" "${cmd}" &>/dev/null && when_ok || when_bad
+
 }
 
-#-------------------------------------------------------------------------------========================================
-#
-# 	Функции которая меняет крайнюю версию пакета в файлах собираемого пакета
-# 	на основе данных из файла ./version
-#
-#-------------------------------------------------------------------------------========================================
-change_version_in_package(){
-	sed -i "s/^\(APP_VERSION=\).*/\1${PACKAGE_VERSION}/g" \
-		"${APPS_ROOT}"/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
-	sed -i "s/^\(APP_RELEASE=\).*/\1${PACKAGE_STAGE}-${PACKAGE_RELEASE}/g" \
-		"${APPS_ROOT}"/entware/package/utils/"${APP_NAME}"/files/bin/"${APP_NAME}"
-}
 
 #-------------------------------------------------------------------------------
 # Получаем путь до ключа
@@ -415,8 +461,8 @@ copy_ssh_keys_to_router(){
 	dev_ip=${1}; dev_port=${2}
 
 	# если ключи отсутствуют на NAS
-	echo "${PREF}Копируем ключи на роутер ${dev_ip} порт ${dev_port}..."
-	ssh -p "${dev_port}" "root@${dev_ip}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys"
+	ready "${PREF}Копируем ключи на роутер ${dev_ip} порт ${dev_port}..."
+	ssh -p "${dev_port}" "root@${dev_ip}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys" && when_ok || when_bad
 	show_line
 }
 
@@ -426,15 +472,35 @@ copy_ssh_keys_to_router(){
 # Производим копирование собранного пакета на роутер
 #-------------------------------------------------------------------------------
 copy_app_to_router(){
+
 	dev_ip=${1}; dev_port=${2}
-	echo "${PREF}Копируем пакет на устройство и производим его установку..."
 	show_line
 #	создаем папку на устройстве для хранения упакованного пакета
 	ssh -p "${dev_port}" "root@${dev_ip}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
 	app_tar_name=$(get_ipk_package_name)
+	ipk_file=$(get_ipk_package_file)
+
 #	удаляем предыдущий файл этой же версии пакета, если он там был и перемещаем его из контейнера на устройство
-	ssh -p "${dev_port}" "root@${dev_ip}" 'rm -f '"/opt/packages/${app_tar_name}" #&> /dev/null
-	scp -P "${dev_port}" "${PACKAGES_PATH}/${app_tar_name}" "root@${dev_ip}:/opt/packages/${app_tar_name}"
+
+	ready "${PREF}Копируем пакет на устройство..."
+
+	if ! [ -f "${PACKAGES_PATH}/${app_tar_name}" ]; then
+		if ! [ -f "${ipk_file}" ]; then
+			error "Файл ${ipk_file}"
+			error "не найден в целевом целевом контейнере."
+			exit 1
+		else
+			cp "${ipk_file}" "${PACKAGES_PATH}/" || \
+				error "Произошла ошибка при копировании файла"
+				error "${ipk_file}"
+				exit 1
+		fi
+	fi
+	{
+		echo -n ''
+		ssh -p "${dev_port}" "root@${dev_ip}" 'rm -f '"/opt/packages/${app_tar_name}" &> /dev/null
+		scp -P "${dev_port}" "${PACKAGES_PATH}/${app_tar_name}" "root@${dev_ip}:/opt/packages/${app_tar_name}" &> /dev/null
+	}  && when_ok || when_bad
 
 }
 
@@ -454,7 +520,7 @@ get_device_arch(){
 # Запускаем тесты на роутере из контейнера
 #-------------------------------------------------------------------------------
 run_tests(){
-    cd "${APPS_ROOT}/${APP_NAME}"${DEV_REMOTE_TESTS_NAME//..\//} || exit 1
+    cd "${APPS_ROOT}/${APP_NAME}"/${DEV_REMOTE_TESTS_NAME//..\//} || exit 1
     ./tests.run
 }
 
@@ -463,7 +529,7 @@ run_tests(){
 # Запрашиваем разрешение на запуск тестов на роутере из контейнера
 #-------------------------------------------------------------------------------
 ask_run_tests(){
-    answer=''; read_ynq "Запустить тесты прямо сейчас [Y/N/Q]? " answer
+    answer=''; read_ynq "${PREF}Запустить тесты прямо сейчас [Y/N/Q]? " answer
     [ "${answer}" = y ] && run_tests
 }
 
@@ -508,10 +574,11 @@ copy_and_install_package(){
     	dev_port=$(echo "${dev}" | cut -d':' -f2)
     	[ "${dev_port}" = "${dev_ip}" ] && dev_port=222
 
+		ready "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL}..."
 		# проверяем на доступность ip роутера
 		if is_ip_or_host_alive "${dev_ip}"; then
 
-			echo -e "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL} доступно!"
+			when_ok "ДОСТУПНО"
 			# 	Проверяем есть ли ключ на роутере
 			docker_key=$(cat < "$(get_key_file)")
 			ssh -p "${dev_port}" "root@${dev_ip}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" || {
@@ -545,7 +612,7 @@ copy_and_install_package(){
 			fi
 
 		else
-			echo -e "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL} недоступно, ${RED}пропускаем!${NOCL}"
+			when_bad "НЕДОСТУПНО!"
 		fi
 	done
 
