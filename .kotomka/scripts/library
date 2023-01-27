@@ -240,7 +240,7 @@ ready() {
 	[ -z "${1}" ] && (echo "Отсутствует текст сообщения!"; exit 1)
 	if [ -z "${2}" ]; then _color=''; else _color=${2}; fi
 	if [ -z "${_color}" ]; then _end=''; else _end=${NOCL}; fi
-	if [ "${3}" = true ]; then new_line='\n'; else new_line=''; fi
+
 	if [[ "${1}" =~ U: ]] ; then
 		text=$(echo "${1}" | sed 's/^U[|:-]//' | tr "[:lower:]" "[:upper:]");
 	else text="${1}"; fi
@@ -248,6 +248,8 @@ ready() {
 #	text="${_color}${text}${_end}";
 	echo -ne "${_color}${text}${_end}"
 	cursor_set '>' "$((LENGTH - 10))"
+	if [ "${3}" = true ]; then echo ''; fi
+
 #	size=$(diff_len "${text}")
 #	printf "%b%-${size}s%b${new_line}" "${text}"
 }
@@ -262,7 +264,7 @@ ready() {
 #  $2 - цвет текста в виде одной из переменной текста, по умолчанию ${RED}
 #-------------------------------------------------------------------------------
 error() {
-	ready "${1}" "${RED}" 'true'
+	ready "${1}" "${RED}" true
 }
 
 #-------------------------------------------------------------------------------
@@ -275,7 +277,7 @@ error() {
 #  $2 - цвет текста в виде одной из переменной текста, по умолчанию ${BLUE}
 #-------------------------------------------------------------------------------
 warning() {
-	ready "${1}" "${BLUE}" 'true'
+	ready "${1}" "${BLUE}" true
 }
 
 
@@ -319,6 +321,18 @@ when_ok() {
 when_bad() {
 	[ -z "${1}" ] && text='OШИБКА' || text=${1}
 	show_result "${text}" "${RED}"
+}
+
+
+#-------------------------------------------------------------------------------
+#   Печатаем текст сообщения если функция завершена С ОШИБКОЙ!
+#	Используем совместно с функциями ready и error
+#
+#   $1 - передаваемый текст, по умолчанию - ГОТОВО
+#   $2 - цвет текста в виде одной из переменной текста, по умолчанию ${GREEN}
+#-------------------------------------------------------------------------------
+when_not_bad() {
+	show_result "${1}" "${BLUE}"
 }
 
 
@@ -402,13 +416,36 @@ get_ipk_package_file(){
     echo "${APPS_ROOT}/entware/bin/targets/${ARCH_BUILD}/generic-glibc/packages/$(get_ipk_package_name)"
 }
 
+#-------------------------------------------------------------------------------
+# Осуществляем вход по ssh с определенными по умолчанию параметрами
+# ConnectTimeout 			- Время ожидания чтобы "достучаться"
+# StrictHostKeyChecking 	- В случае первого входа - сразу согласится с входом, без запроса
+# PasswordAuthentication 	- Не запрашивать пароль при входе, требуется для проверки соединения.
+#-------------------------------------------------------------------------------
+run_ssh(){
+set -x
+	dev=${2}; port=${1}; cmd=${3};
+	ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -p "${port}" "root@${dev}" "${cmd}"
+}
+
 
 #-------------------------------------------------------------------------------
 # Осуществляем проверку на доступность IP или доменного имени
+#	$1 - ip устройства
+#	$2 - порт устройства
+#	Возвращает yes - в случае, если устройство доступно
+#			   no  - в случае, если устройство НЕ доступно
 #-------------------------------------------------------------------------------
-is_ip_or_host_alive(){
-    ping -q -w3 "${1}" &>/dev/null
+is_device_alive(){
+
+	dev=${1}; port=${2}
+	ssh -o ConnectTimeout=2 \
+		-o StrictHostKeyChecking=no \
+		-o PasswordAuthentication=no \
+		-p "${port}" "root@${dev}" 'exit 0' 2>&1 | grep -q 'Connection timed out' && echo no || echo yes
 }
+
+
 #-------------------------------------------------------------------------------
 # Получаем путь до ключа
 #-------------------------------------------------------------------------------
@@ -431,11 +468,11 @@ run_reinstalation_on_router(){
 	dev_ip=${1}; dev_port=${2}
 
 	ready "${PREF}Производим удаление пакета с устройства"
-	ssh -p "${dev_port}" "root@${dev_ip}" 'opkg remove '"${APP_NAME}" &>/dev/null && when_ok || when_bad
+	run_ssh "${dev_port}" "${dev_ip}" 'opkg remove '"${APP_NAME}" &>/dev/null && when_ok || when_bad
 
 	ready "${PREF}Производим установку пакета на устройство"
 	cmd='[ -d /opt/packages ] || mkdir /opt/packages; opkg install /opt/packages/'"$(get_ipk_package_name)"
-	ssh -p "${dev_port}" "root@${dev_ip}" "${cmd}" &>/dev/null && when_ok || when_bad
+	run_ssh "${dev_port}" "${dev_ip}" "${cmd}" &>/dev/null && when_ok || when_bad
 
 }
 
@@ -462,7 +499,7 @@ copy_ssh_keys_to_router(){
 
 	# если ключи отсутствуют на NAS
 	ready "${PREF}Копируем ключи на роутер ${dev_ip} порт ${dev_port}..."
-	ssh -p "${dev_port}" "root@${dev_ip}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys" && when_ok || when_bad
+	run_ssh "${dev_port}" "${dev_ip}" "echo \"$(cat "$(get_key_file)")\" >> /opt/root/.ssh/authorized_keys" && when_ok || when_bad
 	show_line
 }
 
@@ -476,7 +513,7 @@ copy_app_to_router(){
 	dev_ip=${1}; dev_port=${2}
 	show_line
 #	создаем папку на устройстве для хранения упакованного пакета
-	ssh -p "${dev_port}" "root@${dev_ip}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
+	run_ssh "${dev_port}" "${dev_ip}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
 	app_tar_name=$(get_ipk_package_name)
 	ipk_file=$(get_ipk_package_file)
 
@@ -498,7 +535,7 @@ copy_app_to_router(){
 	fi
 	{
 		echo -n ''
-		ssh -p "${dev_port}" "root@${dev_ip}" 'rm -f '"/opt/packages/${app_tar_name}" &> /dev/null
+		run_ssh "${dev_port}" "${dev_ip}" 'rm -f '"/opt/packages/${app_tar_name}" &> /dev/null
 		scp -P "${dev_port}" "${PACKAGES_PATH}/${app_tar_name}" "root@${dev_ip}:/opt/packages/${app_tar_name}" &> /dev/null
 	}  && when_ok || when_bad
 
@@ -512,7 +549,7 @@ get_device_arch(){
 	dev_ip=${1}; dev_port=${2}
 
 	cmd_get_arch='grep "arch" /opt/etc/entware_release | cut -f2 -d"="'
-	ssh -p "${dev_port}" "root@${dev_ip}" "${cmd_get_arch}"
+	run_ssh "${dev_port}" "${dev_ip}" "${cmd_get_arch}"
 }
 
 #-------------------------------------------------------------------------------
@@ -576,12 +613,12 @@ copy_and_install_package(){
 
 		ready "${PREF}Устройство по адресу ${GREEN}${dev_ip}:${dev_port}${NOCL}..."
 		# проверяем на доступность ip роутера
-		if is_ip_or_host_alive "${dev_ip}"; then
+		if [ "$(is_device_alive "${dev_ip}" "${dev_port}")" = yes ]; then
 
 			when_ok "ДОСТУПНО"
 			# 	Проверяем есть ли ключ на роутере
 			docker_key=$(cat < "$(get_key_file)")
-			ssh -p "${dev_port}" "root@${dev_ip}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" || {
+			run_ssh "${dev_port}" "${dev_ip}" 'cat /opt/root/.ssh/authorized_keys' | grep -q "${docker_key}" || {
 					show_line
 					copy_ssh_keys_to_router "${dev_ip}" "${dev_port}"
 			}
