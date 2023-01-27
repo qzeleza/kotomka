@@ -409,22 +409,30 @@ run_when_error(){
 #	error_tag="${RED}ОШИБКА${NOCL}"
 	errors_list='error|fault'
 	echo ''
-	show_line;
-	center "${RED}В ПРОЦЕССЕ СБОРКИ ПАКЕТА ВОЗНИКЛИ ОШИБКИ${NOCL}"
-	show_line
 
-	print_error_log_line "НАЧАЛО ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬇'
-	print_line_sim -
+	err_log=$(docker logs "${1}" --details --tail 150 | grep -iE "${errors_list}" -A100 -B10)
+	if [ -n "${err_log}" ]; then
 
-	echo -ne "${YELLOW}"
-	docker logs "${1}" --details --tail 150 | grep -iE "${errors_list}" -A100 -B10
-	echo -e "${NOCL}"
+		show_line;
+		center "${RED}В ПРОЦЕССЕ РАБОТЫ ВОЗНИКЛИ ОШИБКИ${NOCL}"
+		show_line
+
+		print_error_log_line "НАЧАЛО ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬇'
+		print_line_sim -
+
+		echo -ne "${YELLOW}"
+		echo "${err_log}" | sed 's/^\(.*\)/\t\t\1/g'
+		echo -e "${NOCL}"
 
 
-	print_line_sim -
-	print_error_log_line "КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬆'
-	show_line
-	echo
+		print_line_sim -
+		print_error_log_line "КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬆'
+		show_line
+		echo
+
+	fi
+
+
 }
 #-------------------------------------------------------------------------------
 #  Запускаем Docker exec с параметрами
@@ -574,7 +582,7 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -en "${PREF}Контейнера ${BLUE}${container_name}${NOCL}" && when_bad "НЕ СУЩЕСТВУЕТ"
+    echo -en "${PREF}Контейнер ${BLUE}${container_name}${NOCL}" && when_bad "ЕЩЕ НЕ СОЗДАН"
 
 
     user_group_id="${U_ID}:${G_ID}"
@@ -692,6 +700,7 @@ ask_arch_to_run(){
 	if [ -n "${script_to_run}" ]; then
 		if [ "${script_to_run}" = remove ] ; then
 			act="${RED}удаления${NOCL}";
+			list_arch_menu="$(get_container_list) ${extra_menu_pos}";
 		else
 			act="${GREEN}сборки${NOCL}";
 			list_arch_menu="${list_arch} ${extra_menu_pos}";
@@ -700,7 +709,7 @@ ask_arch_to_run(){
 
 	echo -e "Доступные ${BLUE}архитектуры${NOCL} для ${act} [Q/q - выход]:"
 	show_line
-	count=1; container_list=$(get_container_list)
+	count=1; #container_list=$(get_container_list)
 	for _arch_ in ${ARCH_LIST} ; do
 
 		if echo "${_arch_}" | grep -Eq '\*'; then
@@ -708,7 +717,7 @@ ask_arch_to_run(){
 			when_ok "СМОНТИРОВАН"
 		else
 			if [ "${script_to_run}" = remove ] ; then
-				if echo "${container_list}" | grep -q "${_arch_}" ; then
+				if echo "${list_arch_menu}" | grep -q "${_arch_}" ; then
 					echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
 					when_not_bad "ОСТАНОВЛЕН"
 				else
@@ -716,7 +725,7 @@ ask_arch_to_run(){
 				fi
 			else
 				echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
-				if echo "${container_list}"  | grep -q "${_arch_}" ; then
+				if echo "${list_arch_menu}"  | grep -q "${_arch_}" ; then
 					when_not_bad "ОСТАНОВЛЕН"
 				else
 					when_bad "НЕ СОЗДАН"
@@ -1014,7 +1023,7 @@ show_help(){
 	print_line_sim "="
     echo " make     		[-mk] - сборка пакета и копирование его на роутер"
 	echo " make debug|deb       	      - сборка пакета в режиме отладки."
-    echo " copy     		[-cp] - копирование уже собранного пакета на роутер"
+    echo " copy|install	[-cp|-in] - копирование уже собранного пакета на роутер"
     echo " term     	   	[-tr] - подключение к контейнеру под пользователем '${USER}'."
     echo " root     	   	[-rt] - подключение к контейнеру под пользователем 'root'"
     echo " test     	   	[-ts] - запуск тестов на удаленном устройстве. "
@@ -1035,7 +1044,7 @@ show_help(){
 	echo "                  		armv7-3.2 - для ARMv7 версии 3.2 архитектуры"
     echo "                  		x64  - для X64 архитектуры"
     echo "                  		x86  - для X86 архитектуры"
-    echo " <arch> copy 		[-cp] - копирование уже собранного пакета, указанной архитектуры на роутер."
+    echo " <arch> copy|install   - копирование уже собранного пакета, указанной архитектуры на роутер."
     echo " <arch> remove		[-rm] - производим удаление контейнера."
 	echo " <arch> term 		[-tr] - подключение к контейнеру под пользователем ${USER} для arch архи-ры."
 	echo " <arch> root 		[-rt] - подключение к контейнеру под пользователем root для arch архи-ры."
@@ -1085,7 +1094,7 @@ case "${arg_2}" in
 	term|-tr ) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "" "${arg_1}" ;;
 	root|-rt) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "yes" "${arg_1}" ;;
 	make|-mk)								container_manager_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}" ;;
-	copy|-cp )  	        				container_manager_to_make "${SCRIPT_TO_COPY}" "" "${arg_1}" ;;
+	copy|install|-cp|-in )  	        	container_manager_to_make "${SCRIPT_TO_COPY}" "" "${arg_1}" ;;
     test|-ts )  	        				container_manager_to_make "${SCRIPT_TO_TEST}" "" "${arg_1}" ;;
 	remove|rm|del|-rm)						manage_to_remove_arch_container "${arg_1}";;
 

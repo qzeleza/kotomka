@@ -292,8 +292,9 @@ show_result() {
 
 	[ -z "${1}" ] && text='OK' || text=${1}
 	[ -z "${2}" ] && color="${BLUE}" || color=${2}
-	text=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
-	cursor_set '>' "$((LENGTH - ${#text} - 1))" "${color}${text}${NOCL}"
+	text=$(echo "${text}" | tr "[:lower:]" "[:upper:]")
+	[ -z "${TERMINAL}" ] && opstup=1 || opstup=-2
+	cursor_set '>' "$((LENGTH - ${#text} - opstup))" "${color}${text}${NOCL}"
 	echo ''
 }
 
@@ -423,7 +424,7 @@ get_ipk_package_file(){
 # PasswordAuthentication 	- Не запрашивать пароль при входе, требуется для проверки соединения.
 #-------------------------------------------------------------------------------
 run_ssh(){
-set -x
+#set -x
 	dev=${2}; port=${1}; cmd=${3};
 	ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -p "${port}" "root@${dev}" "${cmd}"
 }
@@ -643,14 +644,18 @@ copy_and_install_package(){
 						if [ "${answer}" = y ]; then run_tests; else show_line; fi
 						;;
 					* ) ;;
+
 				esac
 			else
-				echo -e "${PREF}Но его архитектура ${BLUE}${ARCH_BUILD//-*/}${NOCL} отлична от текущей ${BLUE}${dev_arch}${NOCL}. Копирование ${RED}пропускаем!${NOCL}"
+				arch=
+				echo -e "${PREF}Устройство ${BLUE}${dev_arch}${NOCL} отлично от архитектуры пакета ${BLUE}${ARCH_BUILD//-*/}${NOCL}." && when_bad "пропускаем"
+
 			fi
 
 		else
 			when_bad "НЕДОСТУПНО!"
 		fi
+		show_line
 	done
 
 }
