@@ -376,7 +376,8 @@ get_container_list(){
 	running=$(docker ps -aq --filter name="${APP_NAME}-*" --filter status=running --format "{{.Names}}" | \
 	 	   			 sed -n "s/^\(.*\)/\*\1/p")
 	exited=$(docker ps -aq --filter name="${APP_NAME}-*" --filter status=exited --format "{{.Names}}" )
-	echo -e "${running}${exited}"
+	[ -n "${running}" ] && det=' ' || det=''
+	echo -e "${running}${det}${exited}"
 }
 
 #-------------------------------------------------------------------------------
@@ -392,9 +393,7 @@ purge_containers(){
 print_error_log_line(){
 
 	mess=${1}; sim=${2:--}
-	len_mess=${#mess}
-	sim_len=$((LENGHT-len_mess))
-	sim_len=$((sim_len/2))
+	sim_len=$(((LENGTH-${#mess})/2))
 
 	printf "${RED}%b%${sim_len}s${NOCL}" " " | tr ' ' "${sim}"
 	echo -ne " ${GREEN}${mess}${NOCL} "
@@ -575,21 +574,11 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -e "${PREF}Контейнера ${BLUE}${container_name}${NOCL}" && when_bad "НЕ СУЩЕСТВУЕТ"
+    echo -en "${PREF}Контейнера ${BLUE}${container_name}${NOCL}" && when_bad "НЕ СУЩЕСТВУЕТ"
 
 
     user_group_id="${U_ID}:${G_ID}"
     [ -z "${script_to_run}" ] && [ "${run_with_root}" = yes ] && user_group_id="root:root";
-
-#    container_id_exited=$(docker ps -aq --filter name="${container_name}" --filter status=exited )
-#
-#    if [ -n "${container_id_exited}" ] ; then
-#    	#    Запускаем остановленный контейнер
-#    	ready "${PREF}Монтируем контейнер '${container_name}'..."
-#        docker start "${container_name}" &> /dev/null
-#        docker_exec "${container_id_exited}" "${script_to_run}" "" "${arch}"
-#    else
-
 #   а если контейнера нет - то создаем его и запускаем
 	ready "${PREF}Создаем контейнер. Ожидайте, займет некоторое время..."
 	docker_run "" "${container_name}" "${arch}" "${user_group_id}" && when_ok || when_bad
@@ -692,10 +681,10 @@ container_run_to_make(){
 # Отображаем меню с запросом об архитектуре сборки
 #-------------------------------------------------------------------------------
 ask_arch_to_run(){
-
+#set -x
 	list_arch=${1}
 	script_to_run=${2}
-	count=0; choice=${3}
+	choice=${3}
 	extra_menu_pos="Все\tархитектуры"
 
 	list_arch_menu=${list_arch};
@@ -711,10 +700,30 @@ ask_arch_to_run(){
 
 	echo -e "Доступные ${BLUE}архитектуры${NOCL} для ${act} [Q/q - выход]:"
 	show_line
+	count=1; container_list=$(get_container_list)
+	for _arch_ in ${ARCH_LIST} ; do
 
-	for _arch_ in ${list_arch_menu} ; do
+		if echo "${_arch_}" | grep -Eq '\*'; then
+			echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
+			when_ok "СМОНТИРОВАН"
+		else
+			if [ "${script_to_run}" = remove ] ; then
+				if echo "${container_list}" | grep -q "${_arch_}" ; then
+					echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
+					when_not_bad "ОСТАНОВЛЕН"
+				else
+					count=$((count-1))
+				fi
+			else
+				echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
+				if echo "${container_list}"  | grep -q "${_arch_}" ; then
+					when_not_bad "ОСТАНОВЛЕН"
+				else
+					when_bad "НЕ СОЗДАН"
+				fi
+			fi
+		fi
 		count=$((count+1))
-		echo -e " ${count}. ${BLUE}${_arch_}${NOCL}"
 	done
 	show_line
 	read_choice "Выберите номер позиции из списка: " "${count}" choice
@@ -747,7 +756,7 @@ print_header(){
 # Подключаемся к контейнеру для сборки приложения в нем
 #-------------------------------------------------------------------------------
 container_manager_to_make(){
-
+#set -x
 	script_to_run="${1}"
 	run_with_root="${2:-no}"
 	arch_to_run=${3}
@@ -771,7 +780,12 @@ container_manager_to_make(){
         container_run_to_make "${script_to_run}" "${run_with_root}" "$(get_container_name "all")" "all"
     else
 #		если язык разработки Си или С++
-    	list_arch="$(get_arch_list | tr "[:upper:]" "[:lower:]")"
+#		if [ -n "${script_to_run}" ] ; then
+		list_arch="$(get_arch_list | tr "[:upper:]" "[:lower:]")"
+#		else
+#			list_arch="$(get_container_list | tr "[:upper:]" "[:lower:]")"
+#		fi
+
 #    	если указанная архитектура присутствует в списке
 		list_size=$(echo "${list_arch}" | grep -cE '^[a-zA-Z]')
 
@@ -791,7 +805,8 @@ container_manager_to_make(){
 #        		если указана в аргументах конкретная архитектура
 				choice=$(echo "${list_arch}" | grep -n "${arch_to_run}" | head -1 | cut -d':' -f1)
 				if [ -z "${choice}" ] ; then
-					error "${PREF}Неверно указана архитектура для запуска контейнера!"; show_line
+					error "${PREF}Неверно указана архитектура для запуска контейнера!"
+					show_line
 					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
 				fi
 			fi
@@ -811,6 +826,7 @@ container_manager_to_make(){
 				done
 			else
 				arch=$(echo "${list_arch}" | tr '\n' ' ' | tr -s ' ' | cut -d' ' -f"${choice}")
+#				arch=${arch//\*/}
 				print_header "${arch}" "${_user}"
 				container_run_to_make "${script_to_run}" "${run_with_root}" "${arch}"
 			fi
@@ -883,13 +899,13 @@ remove_arch_container(){
 # Удаляем контейнер с заданной в аргументе архитектурой
 #-------------------------------------------------------------------------------
 manage_to_remove_arch_container(){
-
+#set -x
 	arch_build=${1}; choice=''
 
 	if [ "${arch_build}" ]; then
 #		 в случае, если архитектура задана
 		list_arch=$(get_container_list)
-	    if echo "${list_arch}" | grep -q "${arch_build}" ; then
+	    if echo "${list_arch}" | sed "s/^${APP_NAME}-\(.*\)/\1/" | grep -qE "^${arch_build}-" ; then
 #	    	в случае, если архитектура распознана
 	        remove_arch_container "${arch_build}"
 	    else
