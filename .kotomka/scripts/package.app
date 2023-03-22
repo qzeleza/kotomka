@@ -316,7 +316,7 @@ print_compile_foot(){
 #-------------------------------------------------------------------------------
 prepare_to_run(){
 	find "${APPS_PATH}" -name .DS_Store -exec rm -f {} \;
-	sed -i "s/${APP_NAME}(int/main(int/" "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}/${APP_NAME}.cpp"
+	sed -i "s/${APP_NAME}(int/main(int/" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}/${APP_NAME}.cpp"
 }
 
 #-------------------------------------------------------------------------------

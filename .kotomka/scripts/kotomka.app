@@ -616,7 +616,7 @@ build_image(){
         "${context}/" ; then
 
         show_line
-        ready "${PREF}Docker-образ собран без ошибок."
+        ready "${PREF}Docker-образ собран без ошибок." "" true
 
     else
     	error="${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
@@ -990,7 +990,7 @@ update_me(){
 		curl "https://codeload.github.com/qzeleza/${PACKAGE_APP_NAME}/zip/refs/heads/main" -o "./${PACKAGE_APP_NAME}.zip" &>/dev/null
 		unzip "./${PACKAGE_APP_NAME}.zip" &>/dev/null
 		app_path=$(find . -type d -name "${PACKAGE_APP_NAME}-*" | head -1)
-		cd "${app_path}/" && ls | grep -v run | xargs rm || exit 1
+		cd "${app_path}/" && ls | grep -v run | xargs rm -rf || exit 1
 		cd "${tmp_path}" || exit 1
 		cp -rf "${app_path}/." "../" || exit 1
 		cd .. && rm -rf "./$(basename "${tmp_path}")" || exit 1
