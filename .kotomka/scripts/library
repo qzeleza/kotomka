@@ -23,18 +23,35 @@
 #-------------------------------------------------------------------------------
 
 DEV_MANIFEST_DIR_NAME=''
-DEV_CONFIG_FILE="${1}/build.conf"
+ROOT_PATH_ARG="${1}"
+DEV_CONFIG_FILE="${ROOT_PATH_ARG}/build.conf"
 . "${DEV_CONFIG_FILE}"
 #set -e
 
-RED="\033[1;31m";
-GREEN="\033[1;32m";
+RED="\033[31m";
+GREEN="\033[32m";
 BLUE="\033[36m";
 YELLOW="\033[33m";
+BLINK_ON="\033[5m";
+BLINK_OFF="\033[25m";
 NOCL="\033[m";
 PREF='>> '
+WAITING="ЖДИТЕ"
+
+SAVE_CURSOR="\033[s"
+RESTORE_CURSOR="\033[u"
+ERASE_TO_END_OF_LINE="\033[K"
+
+CURSOR_OFF="\033[?25l"
+#CURSOR_OFF_="\033[?12;25h"
+CURSOR_ON="\033[?25h"
 
 
+#-------------------------------------------------------------------------------
+# Ширина всех линий, отображаемых на экране 3/5 от ширины экрана
+#-------------------------------------------------------------------------------
+cols=$(tput cols)
+LENGTH=$((cols * 3 / 5))
 
 
 #-------------------------------------------------------------------------------
@@ -88,7 +105,7 @@ DEV_IPK_NAME=../../packages
 
 APPS_ROOT=/apps
 #APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-#APP_NAME=$PACKAGE_NAME
+APP_NAME=$PACKAGE_NAME
 PACKAGES_PATH="${APPS_ROOT}/${APP_NAME}/${DEV_IPK_NAME//..\//}"
 
 #-------------------------------------------------------------------------------
@@ -167,20 +184,21 @@ read_choice(){
 #	 Вспомогательные функции печати в лог отладки
 #
 #-------------------------------------------------------------------------------
-LENGTH=86
+
 
 #-------------------------------------------------------------------------------
 #  Печатаем заданный текст в указанной позиции курсора - направление вперед
 #  $1 - Направление установки курсора '>' - вперед и '<' - назад
 #  $2 - число позиции на которое передвинется текст текст
-#  $1 - передаваемый тест
+#  $3 - передаваемый тест
 #-------------------------------------------------------------------------------
 cursor_set(){
 #set -x
-	[ -d "${PACKAGES_PATH}" ] && added=5 || added=0
+	[ -d "${PACKAGES_PATH}" ] && added=6 || added=0
+#	[ -z "${TERMINAL}" ] && opstup=1 || opstup=-3
 	act=${1}; pos=$((${2}+added)); text=${3}
 	if [ "${act}" = '>' ]; then act=C; home='\033[1000D'; else act=D; home=''; fi
-	echo -ne "${home}\033[${pos}${act}${text}"
+	echo -ne "${home}\033[${pos}${act}${4}${text}${NOCL}${BLINK_OFF}"
 #set +x
 }
 
@@ -237,21 +255,23 @@ center() {
 #-------------------------------------------------------------------------------
 ready() {
 
-	[ -z "${1}" ] && (echo "Отсутствует текст сообщения!"; exit 1)
+	mess=${1}
+	_len_wait=${#WAITING}
+
+	[ -z "${mess}" ] && (echo "Отсутствует текст сообщения!"; exit 1)
 	if [ -z "${2}" ]; then _color=''; else _color=${2}; fi
 	if [ -z "${_color}" ]; then _end=''; else _end=${NOCL}; fi
+	if [[ "${mess}" =~ U: ]] ; then
+		mess=$(echo "${mess}" | sed 's/^U[|:-]//' | awk '{print toupper($0)}');
+	else mess="${mess}"; fi
 
-	if [[ "${1}" =~ U: ]] ; then
-		text=$(echo "${1}" | sed 's/^U[|:-]//' | tr "[:lower:]" "[:upper:]");
-	else text="${1}"; fi
-#	if ! [[ "${text}" =~ 033[ ]]; then  text="${_color}${text}${_end}"; fi
-#	text="${_color}${text}${_end}";
-	echo -ne "${_color}${text}${_end}"
-	cursor_set '>' "$((LENGTH - 10))"
+	echo -ne "${_color}${mess}${_end}"
+	printf "\033[$((LENGTH - ${#_len_wait} - 5))G"
+	printf "${YELLOW}${BLINK_ON}${WAITING}${NOCL}"
+	printf "${CURSOR_OFF}"
+
 	if [ "${3}" = true ]; then echo ''; fi
 
-#	size=$(diff_len "${text}")
-#	printf "%b%-${size}s%b${new_line}" "${text}"
 }
 
 #-------------------------------------------------------------------------------
@@ -287,14 +307,17 @@ warning() {
 #
 #   $1 - передаваемый текст, по умолчанию - ГОТОВО
 #   $2 - цвет текста в виде одной из переменной текста, по умолчанию ${GREEN}
+#	$3 - моргать или нет (нет - по умолчанию)
 #-------------------------------------------------------------------------------
 show_result() {
-
+#set -x
+	blink=${3:-no}
 	[ -z "${1}" ] && text='OK' || text=${1}
 	[ -z "${2}" ] && color="${BLUE}" || color=${2}
-	text=$(echo "${text}" | tr "[:lower:]" "[:upper:]")
-	[ -z "${TERMINAL}" ] && opstup=1 || opstup=-2
-	cursor_set '>' "$((LENGTH - ${#text} - opstup))" "${color}${text}${NOCL}"
+#	[ "${3}" = yes ] && color="${color}${BLINK_ON}" || color=${2}
+	text=$(echo "${text}" | awk '{print toupper($0)}')
+	cursor_set '>' "$((LENGTH - ${#text} - 1))" "${text}" "${color}"
+	printf "${CURSOR_ON}"
 	echo ''
 }
 
@@ -308,6 +331,7 @@ show_result() {
 #-------------------------------------------------------------------------------
 when_ok() {
 	[ -z "${1}" ] && text='ГОТОВО' || text=${1}
+	printf "\033[$((LENGTH - 12))G"
 	show_result "${text}" "${GREEN}"
 }
 
@@ -321,6 +345,7 @@ when_ok() {
 #-------------------------------------------------------------------------------
 when_bad() {
 	[ -z "${1}" ] && text='OШИБКА' || text=${1}
+	printf "\033[$((LENGTH - 12))G"
 	show_result "${text}" "${RED}"
 }
 
@@ -335,6 +360,27 @@ when_bad() {
 when_not_bad() {
 	show_result "${1}" "${BLUE}"
 }
+#
+#
+##-------------------------------------------------------------------------------
+##   Печатаем текст сообщения если функция завершена С ОШИБКОЙ!
+##	Используем совместно с функциями ready и error
+##
+##   $1 - передаваемый текст, по умолчанию - ГОТОВО
+##   $2 - цвет текста в виде одной из переменной текста, по умолчанию ${GREEN}
+##-------------------------------------------------------------------------------
+#when_wait() {
+#	text=${1}
+#	wait_text=${2:-ЖДИТЕ}
+#	_len_wait=${#wait_text}
+##	printf "%s" "${text}"
+#	# move cursor to the right column
+#	printf "\033[$((LENGTH - ${#_len_wait} - 2))G"
+#	printf "${YELLOW}${BLINK_ON}${wait_text}${NOCL}"
+#	printf "${CURSOR_OFF}\n"
+#
+##	show_result "${1}" "${BLUE}" yes
+#}
 
 
 #-------------------------------------------------------------------------------
@@ -367,7 +413,7 @@ show_line(){
 get_version_part(){
 
 	value=${1}
-	make_file="${APPS_ROOT}/${APP_NAME}${DEV_ROOT_PATH//./}/Makefile"
+	make_file="${ROOT_PATH_ARG}/${DEV_ROOT_PATH//./}/Makefile"
 
 	if [ "${value}" = PACKAGE_VERSION ]; then cat < "${make_file}" | sed -n "s/PKG_VERSION:=\(.*\)/\1/p"; fi
 	if [ "${value}" = PACKAGE_STAGE ]; 	 then cat < "${make_file}" | sed -n "s/PKG_RELEASE:=\([a-zA-Z]\{3,\}\).*/\1/p"; fi
@@ -471,9 +517,10 @@ run_reinstalation_on_router(){
 	ready "${PREF}Производим удаление пакета с устройства"
 	run_ssh "${dev_port}" "${dev_ip}" 'opkg remove '"${APP_NAME}" &>/dev/null && when_ok || when_bad
 
-	ready "${PREF}Производим установку пакета на устройство"
+	ready "${PREF}Производим установку пакета на устройство"; echo ''
+	show_line
 	cmd='[ -d /opt/packages ] || mkdir /opt/packages; opkg install /opt/packages/'"$(get_ipk_package_name)"
-	run_ssh "${dev_port}" "${dev_ip}" "${cmd}" &>/dev/null && when_ok || when_bad
+	run_ssh "${dev_port}" "${dev_ip}" "${cmd}" #&>/dev/null && when_ok || when_bad
 
 }
 
@@ -542,14 +589,21 @@ copy_app_to_router(){
 
 }
 
+
+#-------------------------------------------------------------------------------
+# Экранируем символы '/' в строке для передачи в sed
+#-------------------------------------------------------------------------------
+escape()(echo "${1}" | sed 's|\/|\\/|g')
+
+
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Получаем архитектуру текущего устройства
 #-------------------------------------------------------------------------------
 get_device_arch(){
-	dev_ip=${1}; dev_port=${2}
 
-	cmd_get_arch='grep "arch" /opt/etc/entware_release | cut -f2 -d"="'
+	dev_ip=${1}; dev_port=${2}
+	cmd_get_arch="cat /opt/etc/opkg.conf | sed -n 's/^arch.\([a-zA-Z]\{1,\}[0-9]\{0,2\}-[0-9]\{1,2\}\.[0-9]\{0,2\}\).*$/\1/p;' | head -1"
 	run_ssh "${dev_port}" "${dev_ip}" "${cmd_get_arch}"
 }
 
@@ -603,7 +657,7 @@ time_diff(){
 #
 #-------------------------------------------------------------------------------
 copy_and_install_package(){
-
+#set -x
     tests_ask=${1:-no}
 
     for dev in ${ROUTER_LIST} ; do
@@ -629,7 +683,7 @@ copy_and_install_package(){
 	#    	текущая архитектура в контейнере (просто название без версии )
 			container_arch=$(echo "${ARCH_BUILD}" | sed -n 's|^\([a-zA-Z]\{4,\}\)[0-9]\{0,2\}\(-[0-9]\{1,2\}.[0-9]\{1,2\}\).*|\1|p')
 
-			if [ "${container_arch}" = "${dev_arch}" ]; then
+			if [ "${ARCH_BUILD}" = "${dev_arch}" ]; then
 				# копируем собранный пакет на роутер
 				copy_app_to_router "${dev_ip}" "${dev_port}"
 	#				запускаем установку пакета
@@ -647,15 +701,16 @@ copy_and_install_package(){
 
 				esac
 			else
-				arch=
-				echo -e "${PREF}Устройство ${BLUE}${dev_arch}${NOCL} отлично от архитектуры пакета ${BLUE}${ARCH_BUILD//-*/}${NOCL}." && when_bad "пропускаем"
-
+				echo -ne "${PREF}Устройство имеет архитектуру ${BLUE}${dev_arch}${NOCL}"
+				when_bad "ПРОПУСКАЕМ"
+				show_line
 			fi
 
 		else
 			when_bad "НЕДОСТУПНО!"
+			show_line
 		fi
-		show_line
+
 	done
 
 }
