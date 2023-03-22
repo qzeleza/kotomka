@@ -1,0 +1,90 @@
+#!/bin/sh
+
+#-------------------------------------------------------------------------------
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom
+# the Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+# OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+# IN THE SOFTWARE.
+#
+# bats-core is a continuation of bats. Copyright for portions of the bats-core
+# project are held by Sam Stephenson, 2014 as part of the project bats,
+# licensed under MIT: Copyright (c) 2014 Sam Stephenson
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom
+# the Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+# OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+#
+#-------------------------------------------------------------------------------
+#
+# Copyright (c) 2022.
+# Все права защищены.
+#
+# Автор: Zeleza
+# Email: mail @ zeleza точка ru
+#
+# Все права защищены.
+#
+# Продукт распространяется под лицензией Apache License 2.0
+# Текст лицензии и его основные положения изложены на русском
+# и английском языках, по ссылкам ниже:
+#
+# https://github.com/qzeleza/kotomka/blob/main/LICENCE.ru
+# https://github.com/qzeleza/kotomka/blob/main/LICENCE.en
+#
+# Перед копированием, использованием, передачей или изменением
+# любой части настоящего кода обязательным условием является
+# прочтение и неукоснительное соблюдение всех, без исключения,
+# статей, лицензии Apache License 2.0 по вышеуказанным ссылкам.
+#
+#-------------------------------------------------------------------------------
+#
+#	Здесь могут располагаются вспомогательные функции
+#	необходимые для проведения тестов
+#
+#-------------------------------------------------------------------------------
+# 	Документация по пакету тестирования находится по ссылке
+#   https://bats-core.readthedocs.io/en/stable/
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Печатаем строку из 100  знаков равно
+#-------------------------------------------------------------------------------
+print_line()(printf '%100.s' ' '| tr ' ' '=' && printf '\n')
+
+
+#-------------------------------------------------------------------------------
+# Печатаем заголовок модуля и исполняем сам модуль с тестами
+#-------------------------------------------------------------------------------
+run_test() {
+	echo "${1}";
+	bats -p "${2}";
+	print_line; echo
+}

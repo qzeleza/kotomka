@@ -28,7 +28,7 @@ BASEDIR=$(dirname "$(dirname "${0}")")
 . "${BASEDIR}/scripts/library" "$(dirname "${BASEDIR}")"
 
 PREF='>> '
-DEBUG=NO
+DEBUG=YES
 
 PACKAGE_FINAL_PATH=package/${USER}/${APP_NAME}
 APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/${PACKAGE_FINAL_PATH}
@@ -86,9 +86,14 @@ link_code_files(){
 	if ! [ -d "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" ] ; then
 		src_dir="${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}"
 		mkdir -p "${APP_MAKE_BUILD_PATH}/${SRC_PATH}"
-		for _file in $(find ${src_dir} -type f);  do
-        	ln -s "${_file}" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}/"
-    	done
+
+		for _dir in $(find ${src_dir} -type d); do
+			path_to_add=${_dir#${src_dir}}
+			[ "${_dir}" = "${src_dir}" ] || mkdir -p "${APP_MAKE_BUILD_PATH}/${SRC_PATH}${path_to_add}/";
+			for _file in $(find ${_dir} -maxdepth 1 -type f );  do
+				ln -s "${_file}" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}${path_to_add}/"
+			done
+		done
 
 	fi
 #	Делаем линк на Makefile (файл манифеста)
@@ -96,12 +101,6 @@ link_code_files(){
 		ln -s "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${app_make_build_path_files}"
 	fi
 
-#	if ! [ -d "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" ] ; then
-#		cp -rf "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}" "${APP_MAKE_BUILD_PATH}/"
-#	fi
-#	if ! [ -d "${app_make_build_path_files}/${OPT_PATH}" ] ; then
-#		cp -rf "${APPS_PATH}/${ROOT_PATH}/${OPT_PATH}" "${app_make_build_path_files}"
-#	fi
 
 }
 
@@ -123,15 +122,19 @@ create_package_section(){
 
     section_name=${1}
     make_file="${2}"
-    section_name_caps=$(echo "${section_name}" | tr '[:lower:]' '[:upper:]')
+    section_name_caps=$(echo "${section_name}" | awk '{print toupper($0)}')
     section_conf=$(get_config_value "SECTION_${section_name_caps}")
+
+#	удаляем секцию из файла, чтобы обновить ее содержимое или просто удалить
+#	sed -i "/define Package\/${APP_NAME}\/${section_name}/,/endef/d" "${make_file}"
 
     if [ -n "${section_conf}" ]; then
         if [ -f "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" ] ; then
-            section_text=$(cat < "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}")
+            section_text=$(cat < "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" | sed 's/^\(.*\)/\t\1/g')
             if [ -n "${section_text}" ] ; then
 				section_text=$(printf "%s\n%s\n%s\n" "define Package/${APP_NAME}/${section_name}" "${section_text}" "endef")
-				awk -i inplace -v r="${section_text}" "{gsub(/@${section_name_caps}/,r)}1" "${make_file}"
+			 	last_cmd=$(cat < "${make_file}" | sed -n "s/\(^\$(eval.*${APP_NAME}\)/\1/p; s/\$/\\$/g; s/(/\\(/g; s/)/\\(/g")
+#				awk -i inplace -v r="${section_text}\n${last_cmd}" "{gsub(/${last_cmd}/,r)}1" "${make_file}"
 			else
 				sed -i "s/@${section_name_caps}//;" "${make_file}"
 			fi
@@ -152,7 +155,7 @@ create_makefile(){
     make_file="${COMPILE_PATH}/Makefile"
     section_list=$(cat < "${DEV_CONFIG_FILE}" | grep -v '^#' \
                     | grep "SECTION_" | sed 's|SECTION_\(.*\)=.*$|\1|g' \
-                    | tr '[:upper:]' '[:lower:]')
+                    | awk '{print tolower($0)}')
 
     for section in ${section_list}; do
         create_package_section "${section}" "${make_file}"
@@ -160,6 +163,7 @@ create_makefile(){
 
     sed -i "s|\(PKGARCH:=\).*|\1${ARCH_BUILD}|g;"  	"${make_file}"
     sed -i '/^[[:space:]]*$/d'  					"${make_file}"
+	sed -i 's/^endef/endef\n/g'						"${make_file}"
 
 #	rm -f "${APP_MAKE_BUILD_PATH}/Makefile"
 #	[ -f "${APP_MAKE_BUILD_PATH}/Makefile" ] || cp -f "${make_file}" "${APP_MAKE_BUILD_PATH}"
@@ -217,7 +221,7 @@ do_compile_package(){
 	make "${PACKAGE_FINAL_PATH}/compile" ${deb} ||  {
 #			feeds_update
 #			make clean
-			make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc
+			[ "${DEBUG}" = YES ] || make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc
 			exit 1
 		}
 }
@@ -247,7 +251,7 @@ do_package_make(){
 #    		exit 1
 #    	}
     	make toolchain/install ${deb} || {
-    		make toolchain/install -j1 V=sc || make clean
+    		[ "${DEBUG}" = YES ] || make toolchain/install -j1 V=sc || make clean
     		exit 1
     	}
     fi
@@ -275,14 +279,20 @@ do_package_make(){
 # Печатаем заголовок компиляции
 #-------------------------------------------------------------------------------
 print_compile_header(){
+	ver_main=$(get_version_part "PACKAGE_VERSION");
+	ver_stage=$(get_version_part "PACKAGE_STAGE");
+	ver_release=$(get_version_part "PACKAGE_RELEASE");
+	full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
+
 	print_mess "${PREF}Задействовано ${BLUE}${np} яд. процессора.${NOCL}"
 	if [ "${DEBUG}" = YES ]; then deb_status="${RED}ВКЛЮЧЕН${NOCL}"; else deb_status="${GREEN}ОТКЛЮЧЕН${NOCL}"; fi
 	print_mess "${PREF}Режим отладки: ${deb_status}"
 	print_mess "${PREF}Makefile успешно импортирован для ${BLUE}${ARCH_BUILD}${NOCL}."
-	print_mess "${PREF}Собираем пакет ${BLUE}${APP_NAME}${NOCL} вер. ${BLUE}${FULL_VERSION}${NOCL}"
+#	print_mess "${PREF}Собираем пакет ${BLUE}${APP_NAME}${NOCL} вер. ${BLUE}${full_ver}${NOCL}"
+	print_mess "${PREF}Собираем пакет ${BLUE}${APP_NAME}${NOCL} вер. ${BLUE}$(get_full_package_version)${NOCL}"
 	check_arch								#	проверяем архитектуру сборки
 	show_line
-	echo -e "${PREF}Сборка запущена: ${BLUE}$(date -d "+3 hours")${NOCL}";
+	echo -e "${PREF}Сборка запущена: ${BLUE}$(LC_ALL=ru_RU.UTF-8 date -d "+3 hours" | sed 's/Europe/Россия, Москва/' | tr -s " ")${NOCL}";
 	show_line
 }
 
@@ -306,6 +316,7 @@ print_compile_foot(){
 #-------------------------------------------------------------------------------
 prepare_to_run(){
 	find "${APPS_PATH}" -name .DS_Store -exec rm -f {} \;
+	sed -i "s/${APP_NAME}(int/main(int/" "${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}/${APP_NAME}.cpp"
 }
 
 #-------------------------------------------------------------------------------
@@ -314,7 +325,7 @@ prepare_to_run(){
 # В случае необходимости устанавливаем флаг отладки в YES
 #-------------------------------------------------------------------------------
 make_all(){
-
+#set -x
 	prepare_to_run
 	time_start=$(date "+%s")
 	print_compile_header										# 	печатаем заголовок компиляции

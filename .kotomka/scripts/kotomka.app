@@ -57,11 +57,6 @@ sedi()(if is_mac_os_x ; then sed -i '' "$@"; else sed -i "$@"; fi)
 
 
 #-------------------------------------------------------------------------------
-# Экранируем символы '/' в строке для передачи в sed
-#-------------------------------------------------------------------------------
-escape()(echo "${1}" | sed 's|\/|\\/|g')
-
-#-------------------------------------------------------------------------------
 # Получаем необходимую информацию о версии пакета
 #-------------------------------------------------------------------------------
 get_version(){
@@ -90,7 +85,7 @@ FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_RELEASE}";
 DEBUG=YES # флаг отладки процесса сборки образа
 #-------------------------------------------------------------------------------
 APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-IMAGE_NAME=$(echo "${DOCKER_ACCOUNT_NAME}" | tr "[:upper:]" "[:lower:]")/${APP_NAME}-dev
+IMAGE_NAME=$(echo "${DOCKER_ACCOUNT_NAME}" | awk '{print tolower($0)}')/${APP_NAME}-dev
 
 #-------------------------------------------------------------------------------
 #	Пути к файлам на машине разработчика
@@ -112,7 +107,7 @@ WORK_PATH_IN_CONTAINER="${APPS_ROOT}/${APP_NAME}/${DEV_NAME_PATH}"
 #-------------------------------------------------------------------------------
 #  Формируем имя контейнера в зависимости от архитектуры процессора.
 #-------------------------------------------------------------------------------
-get_container_name()(echo "${APP_NAME}-${1}" | tr "[:upper:]" "[:lower:]")
+get_container_name()(echo "${APP_NAME}-${1}" | awk '{print tolower($0)}')
 
 
 #-------------------------------------------------------------------------------
@@ -198,7 +193,7 @@ create_sections (){
 
     for section in ${section_list} ; do
         name_caps=$(echo "${section}" | sed "s|^SECTION_\(.*\)=.*$|\1|")
-        name=$(echo "${name_caps}" | tr "[:upper:]" "[:lower:]")
+        name=$(echo "${name_caps}" | awk '{print tolower($0)}')
 
         if echo "${section}" | sed "s|^PACKAGE_.*=\(.*\)$|\1|" | grep -q "YES" ; then
             [ -d "${full_path}" ] || mkdir -p "${full_path}"
@@ -216,7 +211,7 @@ create_sections (){
 set_dev_language(){
 
 	# Исправляем ошибки при различном написании языка разработки (русский и англиский)
-	case "$(echo "${DEV_LANGUAGE}" | tr "[:upper:]" "[:lower:]")" in
+	case "$(echo "${DEV_LANGUAGE}" | awk '{print tolower($0)}')" in
 		си|c|cc|сс|ccc|ссс)
 			DEVELOP_EXT='c'				# на английском
 			lang="Си"					# на русском
@@ -405,7 +400,7 @@ print_error_log_line(){
 #-------------------------------------------------------------------------------
 run_when_error(){
 
-	container_id_or_name=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
+	container_id_or_name=$(echo "${1}" | awk '{print toupper($0)}')
 #	error_tag="${RED}ОШИБКА${NOCL}"
 	errors_list='error|fault'
 	echo ''
@@ -445,7 +440,7 @@ docker_exec(){
     container_id=${1};
     script_to_run=${2};
     root=${3};
-    arch_build=$(echo "${4}" | tr "[:upper:]" "[:lower:]")
+    arch_build=$(echo "${4}" | awk '{print tolower($0)}')
 
     if [ "${root}" = root ]; then user="root:root"; else user="${USER}:${GROUP}"; fi
     if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; TERMINAL='true';
@@ -490,7 +485,7 @@ docker_run(){
 
     script_to_run=${1};
     container_name=${2};
-    arch_build=$(echo "${3}" | tr "[:upper:]" "[:lower:]")
+    arch_build=$(echo "${3}" | awk '{print tolower($0)}')
     user=${4}
     context=$(dirname "$(dirname "$(pwd)")")
 
@@ -745,9 +740,9 @@ ask_arch_to_run(){
 #-------------------------------------------------------------------------------
 print_header(){
 
-	arch=$(echo "${1}" | tr "[:lower:]" "[:upper:]")
-	user=$(echo "${2}" | tr "[:lower:]" "[:upper:]")
-	app=$(echo "${APP_NAME}" | tr "[:lower:]" "[:upper:]")
+	arch=$(echo "${1}" | awk '{print toupper($0)}')
+	user=$(echo "${2}" | awk '{print toupper($0)}')
+	app=$(echo "${APP_NAME}" | awk '{print toupper($0)}')
 
 	echo ""
 	echo ""
@@ -790,9 +785,9 @@ container_manager_to_make(){
     else
 #		если язык разработки Си или С++
 #		if [ -n "${script_to_run}" ] ; then
-		list_arch="$(get_arch_list | tr "[:upper:]" "[:lower:]")"
+		list_arch="$(get_arch_list | awk '{print tolower($0)}')"
 #		else
-#			list_arch="$(get_container_list | tr "[:upper:]" "[:lower:]")"
+#			list_arch="$(get_container_list | awk '{print tolower($0)}')"
 #		fi
 
 #    	если указанная архитектура присутствует в списке
