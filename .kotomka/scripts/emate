@@ -1,0 +1,88 @@
+#!/bin/bash
+
+#RED="\033[1;31m";
+#BLUE="\033[36m";
+#GREEN="\033[33m";
+#NOCL="\033[m";
+
+. ../../build.conf
+
+GPT_SYSTEM_TEXT="
+Ты - инженер-программист мирового класса в устройствах entware для которых пишешь код на языке С++ версии 11.
+"
+MAX_TOKENS=4097
+
+curl_text_request(){
+
+	url=${1}
+	model=${2}
+	prompt=${3}
+	focus=${4}
+	max_tokens=${5}
+
+	curl -s "${url}" \
+	  -H 'Content-Type: application/json' \
+	  -H 'Authorization: Bearer '"${GPT_TOKEN}" \
+	  -d '{ "model": "'"${model}"'",'"${prompt}"',
+	  "max_tokens": '"${max_tokens}"',
+	  "n": 1,
+	  "temperature": '"${focus}"'}' --insecure
+
+}
+
+#
+# Модель разового запроса в aiopen
+#
+ask_ones(){
+	request=$(echo "${2:-${GPT_SYSTEM_TEXT}} ${1}" | sed "s/'/\\\\\"/g;" | tr '\n' ' ')
+	focus=${3:-0}				# 0 - без вариаций, 2 - максимально разные ответы
+
+	request_words=$(echo "${request}" | wc -w)
+	max_tokens=$((MAX_TOKENS - request_words * 7))
+
+	model=text-davinci-003
+	url=https://api.openai.com/v1/completions
+	prompt='"prompt": "'"${request}"'"'
+
+	result=$(curl_text_request "${url}" "${model}" "${prompt}" "${focus}" "${max_tokens}")
+	echo "${result}" | grep -q invalid_request_error && return "${result}"
+	result=$(echo "${result}"  | jq '.choices[]'.text | sed 's/\\"/"/g; s/^\"//; s/\"$//;' | sed "s/\`//g")
+	printf "${result}\n"
+}
+
+#
+# Модель много-разового (chat) запроса в aiopen
+#
+ask_chat(){
+	request=$(echo "${1}" | sed "s/'/\\\\\"/g;" | tr '\n' ' ')
+	system_prompt=${2}
+	system_prompt=$(echo "${system_prompt}" | sed "s/'/\\\\\"/g;" | tr '\n' ' ')
+	focus=${3:-0}				# 0 - без вариаций, 2 - максимально разные ответы
+
+	request_words=$(echo "${system_prompt} ${request}" | wc -w)
+	max_tokens=${4}; [ -z "${max_tokens}" ] && max_tokens=$((MAX_TOKENS - request_words * 2))
+
+	model=gpt-3.5-turbo
+	url=https://api.openai.com/v1/chat/completions
+	prompt='"messages": [{"role": "system", "content": "'"${system_prompt}"'"},
+	{"role": "user", "content": "'"${request}"'"}]'
+
+	result=$(curl_text_request "${url}" "${model}" "${prompt}" "${focus}" "${max_tokens}")
+	if echo "${result}" | grep -q invalid_request_error; then
+		error_tokens_text="However, you requested"
+		if echo "${result}" | grep -q "${error_tokens_text}"; then
+			mess_tokens=$(echo "${result}" | grep "${error_tokens_text}" -B1 | cut -d"(" -f2 | cut -d" " -f1 | tr '\n' ' ')
+			max_tokens=$((MAX_TOKENS - mess_tokens - 1))
+#			echo "mess_tokens = ${mess_tokens}"
+#			echo "max_tokens = ${max_tokens}"
+#			echo "${result}" | grep "${error_tokens_text}"
+			result=$(curl_text_request "${url}" "${model}" "${prompt}" "${focus}" "${max_tokens}")
+		else
+			return "${result}"
+		fi
+	fi
+	result=$(echo "${result}" | jq '.choices[]'.message.content | sed 's/\\"/"/g; s/^\"//; s/\"$//;')
+	printf "${result}\n"
+}
+
+#ask_chat "${1}"

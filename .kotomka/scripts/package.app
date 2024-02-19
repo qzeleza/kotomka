@@ -26,10 +26,10 @@ set -e
 
 BASEDIR=$(dirname "$(dirname "${0}")")
 . "${BASEDIR}/scripts/library" "$(dirname "${BASEDIR}")"
+. "${BASEDIR}/scripts/emate"
 
 PREF='>> '
-DEBUG=YES
-
+DEBUG=NO
 PACKAGE_FINAL_PATH=package/${USER}/${APP_NAME}
 APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/${PACKAGE_FINAL_PATH}
 APPS_PATH=${APPS_ROOT}/${APP_NAME}
@@ -87,9 +87,11 @@ link_code_files(){
 		src_dir="${APPS_PATH}/${ROOT_PATH}/${SRC_PATH}"
 		mkdir -p "${APP_MAKE_BUILD_PATH}/${SRC_PATH}"
 
+#		find "${src_dir}" -type d | while IFS= read -r -d '' _dir; do
 		for _dir in $(find ${src_dir} -type d); do
 			path_to_add=${_dir#${src_dir}}
 			[ "${_dir}" = "${src_dir}" ] || mkdir -p "${APP_MAKE_BUILD_PATH}/${SRC_PATH}${path_to_add}/";
+#			find "${_dir}" -maxdepth 1 -type f | while IFS= read -r -d '' _file ; do
 			for _file in $(find ${_dir} -maxdepth 1 -type f );  do
 				ln -s "${_file}" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}${path_to_add}/"
 			done
@@ -130,14 +132,14 @@ create_package_section(){
 
     if [ -n "${section_conf}" ]; then
         if [ -f "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" ] ; then
-            section_text=$(cat < "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" | sed 's/^\(.*\)/\t\1/g')
-            if [ -n "${section_text}" ] ; then
-				section_text=$(printf "%s\n%s\n%s\n" "define Package/${APP_NAME}/${section_name}" "${section_text}" "endef")
-			 	last_cmd=$(cat < "${make_file}" | sed -n "s/\(^\$(eval.*${APP_NAME}\)/\1/p; s/\$/\\$/g; s/(/\\(/g; s/)/\\(/g")
-#				awk -i inplace -v r="${section_text}\n${last_cmd}" "{gsub(/${last_cmd}/,r)}1" "${make_file}"
-			else
+#            section_text=$(cat < "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" | sed 's/^\(.*\)/\t\1/g')
+#            if [ -n "${section_text}" ] ; then
+#				section_text=$(printf "%s\n%s\n%s\n" "define Package/${APP_NAME}/${section_name}" "${section_text}" "endef")
+##			 	last_cmd=$(cat < "${make_file}" | sed -n "s/\(^\$(eval.*${APP_NAME}\)/\1/p; s/\$/\\$/g; s/(/\\(/g; s/)/\\(/g")
+##				awk -i inplace -v r="${section_text}\n${last_cmd}" "{gsub(/${last_cmd}/,r)}1" "${make_file}"
+#			else
 				sed -i "s/@${section_name_caps}//;" "${make_file}"
-			fi
+#			fi
         else
             sed -i "s/@${section_name_caps}//;" "${make_file}"
         fi
@@ -201,29 +203,83 @@ check_arch(){
 # Установка заплатки для решения проблемы
 # с ошибкой 'file lt~obsolete.m4 not exist'
 #-------------------------------------------------------------------------------
-aclocal_patch(){
-
-	m4_path=/apps/entware/package/master/samovar/src/libhttpserver-0.18.2/m4
-	aclocal_path=/apps/entware/staging_dir/host/share/aclocal
-	aclocal_files="libtool.m4,lt~obsolete.m4,ltoptions.m4,ltsugar.m4,ltversion.m4"
-
-	rm -f "${m4_path}/{${aclocal_files}}"
-	ln -s "${aclocal_path}/{${aclocal_files}}" "${m4_path}"
-}
+#aclocal_patch(){
+#
+#	m4_path=/apps/entware/package/master/samovar/src/libhttpserver-0.18.2/m4
+#	aclocal_path=/apps/entware/staging_dir/host/share/aclocal
+#	aclocal_files="libtool.m4,lt~obsolete.m4,ltoptions.m4,ltsugar.m4,ltversion.m4"
+#
+#	rm -f "${m4_path}/{${aclocal_files}}"
+#	ln -s "${aclocal_path}/{${aclocal_files}}" "${m4_path}"
+#}
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
 # Производим компиляцию пакета и обработку ошибок
 #-------------------------------------------------------------------------------
 do_compile_package(){
+	stage=${1}
 
-#	aclocal_patch
-#	make "${PACKAGE_FINAL_PATH}/{compile,prepare,configure}" ${deb} || {
+#	if [ ${stage} = tool ]
+#		make_cmd
+#	else
+
 	make "${PACKAGE_FINAL_PATH}/compile" ${deb} ||  {
-#			feeds_update
-#			make clean
-			[ "${DEBUG}" = YES ] || make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc
+
+			[ "${DEBUG}" = YES ] || {
+
+				sep='---\n'
+				LINE_WIDTH=120
+				re_exp="^.*\.cpp.*error:|^.*\.h[p]{0,2}.*error:"
+				make_text=$(make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc 2>&1)
+
+				compile_text=$(echo "${make_text}" | grep -iE "${re_exp}" -B1 -A2 | tail -9)
+
+				if [ -z "${compile_text}" ] ; then
+					compile_text=$(echo "${make_text}" | grep -i "error:" -C10)
+				else
+					error_file_name=$(echo "${compile_text}" | grep -iE "${re_exp}"  | cut -d':' -f1 | sort -u)
+				fi
+				echo ''; show_line
+				red ">> ОПИСАНИЕ ОШИБКИ:"
+				show_line; echo ''
+				red "$(echo -e "${compile_text}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}" )\n"
+				show_line
+				green ">> ПОДСКАЗКА ПО ОШИБКЕ:"
+				show_line; echo ''
+
+
+				pref="Помоги мне понять, в чем может быть проблема. Компилятор C++11 нашел ошибки."
+				post="Найди оптимальное решение по поиску и исправлению ошибок, указанных выше и
+				напиши инструкцию шаг за шагом, по пунктам, как мне быстрее всего, исправить найденные ошибки.
+				Отвечай только на русском языке."
+
+				if [ -n "${error_file_name}" ]; then
+
+					files_contain="${sep}"
+					for src_file in ${error_file_name}; do
+						file_full=$(find "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" -type f -name "${src_file}")
+						if [ "${files_contain}" = "${sep}" ]; then
+							files_contain="${files_contain}#${src_file}\n\n$(cat "${file_full}" )"
+						else
+							files_contain="${files_contain}\n\n#${src_file}\n\n$(cat "${file_full}")"
+						fi
+					done
+					files_contain="${files_contain}\n${sep}"
+
+					files_contain="Код, в котором компилятор нашел ошибки:\n${files_contain}"
+					compile_text="\nСписок ошибок:\n${sep}${compile_text}\n\n${sep}"
+					question="${pref}\n${sep}${files_contain}${compile_text}${post}"
+				else
+					question="${pref}\n${compile_text}\n${post}"
+				fi
+				question=$(printf "${question}" | sed 's/"/\\\"/g;' | sed "s/\'/\\\"/g;" | sed 's/\\"/@/g;s/"$//g;s/@/\\"/g;s/[\t\r]//g;')
+				answer=$(ask_chat "${question}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}")
+				green "${answer}\n"
+				show_line
+			}
 			exit 1
 		}
+
 }
 
 #-------------------------------------------------------------------------------
@@ -235,21 +291,12 @@ do_package_make(){
     deb=${1}
     cd "${ENTWARE_PATH}" || exit 1
 
-#	rm -f /apps/entware/tmp/info/.files-* /apps/entware/tmp/info/.overrides-*
-#	find /apps/entware/ -type f -name '.files-packageinfokageinfo*' -exec rm {} \;
-
 #	удаляем предыдущую версию пакета ipk перед сборкой текущей версии
     rm -f "$(get_ipk_package_file)"
-#	make clean
 
     if ! grep -q "${APP_NAME}" "${BUILD_CONFIG}" ; then
 #		Если имени нашего пакета нет в конфиг-файле меню ядра, то добавляем его
     	make oldconfig <<< m
-
-#    	make tools/install ${deb} || {
-#    		make tools/install -j1 V=sc || make clean
-#    		exit 1
-#    	}
     	make toolchain/install ${deb} || {
     		[ "${DEBUG}" = YES ] || make toolchain/install -j1 V=sc || make clean
     		exit 1
@@ -257,11 +304,8 @@ do_package_make(){
     fi
 
 	make "${PACKAGE_FINAL_PATH}/clean" || {
-#		make "${PACKAGE_FINAL_PATH}/prepare" USE_SOURCE_DIR="${APP_MAKE_BUILD_PATH}/${SRC_PATH}" && {
-			do_compile_package || {
-#				make "package/${MYAPPS_NAME}/${APP_NAME}/clean" -j1 V=sc
-				do_compile_package
-#			}
+		do_compile_package || {
+			do_compile_package
 		}
 	} && do_compile_package
 
@@ -279,10 +323,10 @@ do_package_make(){
 # Печатаем заголовок компиляции
 #-------------------------------------------------------------------------------
 print_compile_header(){
-	ver_main=$(get_version_part "PACKAGE_VERSION");
-	ver_stage=$(get_version_part "PACKAGE_STAGE");
-	ver_release=$(get_version_part "PACKAGE_RELEASE");
-	full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
+#	ver_main=$(get_version_part "PACKAGE_VERSION");
+#	ver_stage=$(get_version_part "PACKAGE_STAGE");
+#	ver_release=$(get_version_part "PACKAGE_RELEASE");
+#	full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
 
 	print_mess "${PREF}Задействовано ${BLUE}${np} яд. процессора.${NOCL}"
 	if [ "${DEBUG}" = YES ]; then deb_status="${RED}ВКЛЮЧЕН${NOCL}"; else deb_status="${GREEN}ОТКЛЮЧЕН${NOCL}"; fi
@@ -316,7 +360,7 @@ print_compile_foot(){
 #-------------------------------------------------------------------------------
 prepare_to_run(){
 	find "${APPS_PATH}" -name .DS_Store -exec rm -f {} \;
-	sed -i "s/${APP_NAME}(int/main(int/" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}/${APP_NAME}.cpp"
+	sed -i "s/int ${APP_NAME}()/int main()/" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}/${APP_NAME}.cpp"
 }
 
 #-------------------------------------------------------------------------------
@@ -326,10 +370,11 @@ prepare_to_run(){
 #-------------------------------------------------------------------------------
 make_all(){
 #set -x
-	prepare_to_run
+
 	time_start=$(date "+%s")
 	print_compile_header										# 	печатаем заголовок компиляции
 	link_code_files												#	копируем данные кода в папку для компиляции
+	prepare_to_run
 	feeds_update_ones											#   обновляем фиды, если они еще не установлены
 	create_makefile && {										#	создаем файл манифеста Makefile
 		do_package_make "${deb}"								# 	производим сборку пакета

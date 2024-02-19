@@ -193,13 +193,18 @@ read_choice(){
 #  $3 - передаваемый тест
 #-------------------------------------------------------------------------------
 cursor_set(){
-#set -x
-	[ -d "${PACKAGES_PATH}" ] && added=6 || added=0
-#	[ -z "${TERMINAL}" ] && opstup=1 || opstup=-3
-	act=${1}; pos=$((${2}+added)); text=${3}
-	if [ "${act}" = '>' ]; then act=C; home='\033[1000D'; else act=D; home=''; fi
-	echo -ne "${home}\033[${pos}${act}${4}${text}${NOCL}${BLINK_OFF}"
-#set +x
+
+	[ "${3}" = "ДОСТУПНО" ] && pos=76
+	[ "${3}" = "ПРОПУСКАЕМ" ] && pos=74
+	[ "${3}" = "ГОТОВО" ] && pos=78
+	[ "${3}" = "ЖДЕМ" ] && pos=76
+	[ "${3}" = "OШИБКА" ] && pos=78
+	[ "${3}" = "ЗАПУЩЕН" ] && pos=77
+
+	act=${1}; text=${3}
+	if [ "${act}" = '>' ]; then act=C; home="\033[5000D"; else act=D; home=''; fi
+	echo -ne "${home}\033[${pos}${act}${4}${text}${NOCL}"
+
 }
 
 
@@ -208,8 +213,7 @@ cursor_set(){
 #  заданной шириной печати - LENGTH
 #-------------------------------------------------------------------------------
 diff_len() {
-#	set -x
-#	text_="$(echo ${1} | sed 's/\x1B\[[0-9;]\{1,\}[A-Za-z]//g')"
+
 	text_=${1//>> /}
 	len__="${#text_}"
 
@@ -252,11 +256,13 @@ center() {
 #  		предложения поставить два символа 'U:' или 'U|' или 'U-'
 #  $2 - цвет текста в виде одной из переменной текста, по умолчанию - без цвета
 #  $3 - флаг указывает на наличие печати новой строки после текста
+#  $4 - выводить ли надпись ЖДИТЕ: true - по умолчанию и false - не выводить
 #-------------------------------------------------------------------------------
 ready() {
 
 	mess=${1}
-	_len_wait=${#WAITING}
+	_len_wait_="${#WAITING}"
+	wait_flag=${4:-true}
 
 	[ -z "${mess}" ] && (echo "Отсутствует текст сообщения!"; exit 1)
 	if [ -z "${2}" ]; then _color=''; else _color=${2}; fi
@@ -266,14 +272,30 @@ ready() {
 	else mess="${mess}"; fi
 
 	echo -ne "${_color}${mess}${_end}"
-	printf "\033[$((LENGTH - ${#_len_wait} - 5))G"
-	printf "${YELLOW}${BLINK_ON}${WAITING}${NOCL}"
+	printf "\033[$((LENGTH - ${#len_wait_} - 5))G"
+	[ "${wait_flag}" = true ] && printf "${YELLOW}${BLINK_ON}${WAITING}${NOCL}"
 	printf "${CURSOR_OFF}"
 
 	if [ "${3}" = true ]; then echo ''; fi
 
 }
-
+#-------------------------------------------------------------------------------
+#  Печатаем текст сообщения заданным цветом
+#  исполнения некой функции, c учетом ограничения по ширине печати - LENGTH,
+#  результат которой описывается в $1.
+#  Используется совместно с функциями when_ok и when_bad
+#
+#  $1 - передаваемый текст (обязательный параметр)
+#-------------------------------------------------------------------------------
+green(){
+	ready "${1}" "${GREEN}" true false
+}
+red(){
+	ready "${1}" "${RED}" true false
+}
+blue(){
+	ready "${1}" "${BLUE}" true false
+}
 #-------------------------------------------------------------------------------
 #  Печатаем текст сообщения заданным цветом (КРАСНЫМ) о неуспехе
 #  исполнения некой функции, c учетом ограничения по ширине печати - LENGTH,
@@ -316,7 +338,11 @@ show_result() {
 	[ -z "${2}" ] && color="${BLUE}" || color=${2}
 #	[ "${3}" = yes ] && color="${color}${BLINK_ON}" || color=${2}
 	text=$(echo "${text}" | awk '{print toupper($0)}')
-	cursor_set '>' "$((LENGTH - ${#text} - 1))" "${text}" "${color}"
+#	set -x
+	len_text=${#text}
+	offset=$((LENGTH - len_text - 1))
+	cursor_set '>' "${offset}" "${text}" "${color}"
+#	set +x
 	printf "${CURSOR_ON}"
 	echo ''
 }
@@ -331,7 +357,19 @@ show_result() {
 #-------------------------------------------------------------------------------
 when_ok() {
 	[ -z "${1}" ] && text='ГОТОВО' || text=${1}
-	printf "\033[$((LENGTH - 12))G"
+#	set -x
+#	if [ -z "${1}" ] ; then
+#		text="ГОТОВО"
+#		text_len="${#text}"
+#		offset=$((LENGTH - text_len))
+#	else
+#		text="${1}"
+#		text_len="${#text}"
+#		offset=$((LENGTH - text_len - 3))
+#	fi
+#set +x
+
+#	printf "\033[${offset}G"
 	show_result "${text}" "${GREEN}"
 }
 
@@ -345,7 +383,9 @@ when_ok() {
 #-------------------------------------------------------------------------------
 when_bad() {
 	[ -z "${1}" ] && text='OШИБКА' || text=${1}
-	printf "\033[$((LENGTH - 12))G"
+#	text_len="${#text}"
+#	offset=$((LENGTH - text_len))
+#	printf "\033[${offset}G"
 	show_result "${text}" "${RED}"
 }
 
@@ -517,11 +557,11 @@ run_reinstalation_on_router(){
 	ready "${PREF}Производим удаление пакета с устройства"
 	run_ssh "${dev_port}" "${dev_ip}" 'opkg remove '"${APP_NAME}" &>/dev/null && when_ok || when_bad
 
-	ready "${PREF}Производим установку пакета на устройство"; echo ''
-	show_line
+	ready "${PREF}Производим установку пакета на устройство" "" true false
+	print_line_sim "-" 0
 	cmd='[ -d /opt/packages ] || mkdir /opt/packages; opkg install /opt/packages/'"$(get_ipk_package_name)"
 	run_ssh "${dev_port}" "${dev_ip}" "${cmd}" #&>/dev/null && when_ok || when_bad
-
+	show_line
 }
 
 
@@ -559,7 +599,7 @@ copy_ssh_keys_to_router(){
 copy_app_to_router(){
 
 	dev_ip=${1}; dev_port=${2}
-	show_line
+#	show_line
 #	создаем папку на устройстве для хранения упакованного пакета
 	run_ssh "${dev_port}" "${dev_ip}" '[ -d /opt/packages ] || mkdir -p /opt/packages'
 	app_tar_name=$(get_ipk_package_name)
@@ -707,7 +747,7 @@ copy_and_install_package(){
 			fi
 
 		else
-			when_bad "НЕДОСТУПНО!"
+			when_bad "НЕДОСТУПНО"
 			show_line
 		fi
 

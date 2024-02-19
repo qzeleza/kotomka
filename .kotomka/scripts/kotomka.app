@@ -446,7 +446,7 @@ docker_exec(){
     if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; TERMINAL='true';
     else TERMINAL='false'; fi
     if ! docker exec \
-			--tty -i \
+			-i -t \
 			--workdir "${WORK_PATH_IN_CONTAINER}" \
 			--env ROUTER_LIST="${ROUTER_LIST}" \
 			--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
@@ -495,7 +495,7 @@ docker_run(){
 
     if ! docker run \
            	--workdir "${WORK_PATH_IN_CONTAINER}" \
-           	-dti \
+           	-i -t -d \
 			--env ROUTER_LIST="${ROUTER_LIST}" \
            	--env ARCH_BUILD="${arch_build}" \
            	--env COMPILE_NAME="${DEV_COMPILE_NAME}" \
@@ -616,7 +616,7 @@ build_image(){
         "${context}/" ; then
 
         show_line
-        ready "${PREF}Docker-образ собран без ошибок." "" true
+        ready "${PREF}Docker-образ собран без ошибок."
 
     else
     	error="${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
@@ -990,7 +990,7 @@ update_me(){
 		curl "https://codeload.github.com/qzeleza/${PACKAGE_APP_NAME}/zip/refs/heads/main" -o "./${PACKAGE_APP_NAME}.zip" &>/dev/null
 		unzip "./${PACKAGE_APP_NAME}.zip" &>/dev/null
 		app_path=$(find . -type d -name "${PACKAGE_APP_NAME}-*" | head -1)
-		cd "${app_path}/" && ls | grep -v run | xargs rm -rf || exit 1
+		cd "${app_path}/" && ls | grep -v run | xargs rm  -rf || exit 1
 		cd "${tmp_path}" || exit 1
 		cp -rf "${app_path}/." "../" || exit 1
 		cd .. && rm -rf "./$(basename "${tmp_path}")" || exit 1
@@ -1086,8 +1086,8 @@ esac
 
 case "${arg_2}" in
 
-	term|-tr ) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "" "${arg_1}" ;;
-	root|-rt) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "yes" "${arg_1}" ;;
+	term|user|-tr ) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "" "${arg_1}" ;;
+	root|admin|-rt) 	[ -n "${arg_1}" ] && 		container_manager_to_make "" "yes" "${arg_1}" ;;
 	make|-mk)								container_manager_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}" ;;
 	copy|install|-cp|-in )  	        	container_manager_to_make "${SCRIPT_TO_COPY}" "" "${arg_1}" ;;
     test|-ts )  	        				container_manager_to_make "${SCRIPT_TO_TEST}" "" "${arg_1}" ;;
