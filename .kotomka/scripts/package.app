@@ -25,7 +25,7 @@
 set -e
 
 BASEDIR=$(dirname "$(dirname "${0}")")
-. "${BASEDIR}/scripts/library" "$(dirname "${BASEDIR}")"
+. "${BASEDIR}/scripts/libraries/library" "$(dirname "${BASEDIR}")"
 . "${BASEDIR}/scripts/emate"
 
 PREF='>> '
@@ -38,8 +38,8 @@ ENTWARE_PATH=${APPS_ROOT}/entware
 BUILD_CONFIG="${ENTWARE_PATH}/.config"
 
 COMPILE_PATH=${COMPILE_PATH//\/\//\/}
-mkdir_when_not "${APP_MAKE_BUILD_PATH}"
-print_mess()(echo -e "${1}")
+mkdir_when_no "${APP_MAKE_BUILD_PATH}"
+print_mess()(printf "${1}\n")
 
 #-------------------------------------------------------------------------------
 # ИСПОЛНЯЕМ ВНУТРИ КОНТЕЙНЕРА !!!
@@ -130,7 +130,7 @@ create_package_section(){
 #	удаляем секцию из файла, чтобы обновить ее содержимое или просто удалить
 #	sed -i "/define Package\/${APP_NAME}\/${section_name}/,/endef/d" "${make_file}"
 
-    if [ -n "${section_conf}" ]; then
+    if [ -n "${section_conf}" ] && [ -f "${make_file}" ]; then
         if [ -f "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" ] ; then
 #            section_text=$(cat < "${COMPILE_PATH}${DEV_MANIFEST_DIR_NAME}/${section_name}" | sed 's/^\(.*\)/\t\1/g')
 #            if [ -n "${section_text}" ] ; then
@@ -179,8 +179,10 @@ create_makefile(){
 #-------------------------------------------------------------------------------
 check_arch(){
 
+[ -z $APP_NAME ] && exit
+
 	configs_path="${COMPILE_PATH}"
-    mkdir_when_not "${configs_path}"
+    mkdir_when_no "${configs_path}"
 
     if [ -f "${BUILD_CONFIG}" ]; then
 #    	архитектура совпадает от предыдущей сборки?
@@ -217,65 +219,62 @@ check_arch(){
 # Производим компиляцию пакета и обработку ошибок
 #-------------------------------------------------------------------------------
 do_compile_package(){
-	stage=${1}
 
-#	if [ ${stage} = tool ]
-#		make_cmd
-#	else
 
 	make "${PACKAGE_FINAL_PATH}/compile" ${deb} ||  {
 
 			[ "${DEBUG}" = YES ] || {
+				[ -n "${GPT_TOKEN}" ] && {
+					sep='---\n'
+					LINE_WIDTH=120
+					re_exp="^.*\.cpp.*error:|^.*\.h[p]{0,2}.*error:"
+					make_text=$(make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc 2>&1)
 
-				sep='---\n'
-				LINE_WIDTH=120
-				re_exp="^.*\.cpp.*error:|^.*\.h[p]{0,2}.*error:"
-				make_text=$(make "${PACKAGE_FINAL_PATH}/compile" -j1 V=sc 2>&1)
+					compile_text=$(echo "${make_text}" | grep -iE "${re_exp}" -B1 -A2 | tail -9)
 
-				compile_text=$(echo "${make_text}" | grep -iE "${re_exp}" -B1 -A2 | tail -9)
-
-				if [ -z "${compile_text}" ] ; then
-					compile_text=$(echo "${make_text}" | grep -i "error:" -C10)
-				else
-					error_file_name=$(echo "${compile_text}" | grep -iE "${re_exp}"  | cut -d':' -f1 | sort -u)
-				fi
-				echo ''; show_line
-				red ">> ОПИСАНИЕ ОШИБКИ:"
-				show_line; echo ''
-				red "$(echo -e "${compile_text}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}" )\n"
-				show_line
-				green ">> ПОДСКАЗКА ПО ОШИБКЕ:"
-				show_line; echo ''
+					if [ -z "${compile_text}" ] ; then
+						compile_text=$(echo "${make_text}" | grep -i "error:" -C10)
+					else
+						error_file_name=$(echo "${compile_text}" | grep -iE "${re_exp}"  | cut -d':' -f1 | sort -u)
+					fi
+					echo ''; print_line
+					print_error">> ОПИСАНИЕ ОШИБКИ:"
+					print_line ; echo ''
+					print_error"$(echo -e "${compile_text}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}" )\n"
+					print_line
+					print_info ">> ПОДСКАЗКА ПО ОШИБКЕ:"
+					print_line ; echo ''
 
 
-				pref="Помоги мне понять, в чем может быть проблема. Компилятор C++11 нашел ошибки."
-				post="Найди оптимальное решение по поиску и исправлению ошибок, указанных выше и
-				напиши инструкцию шаг за шагом, по пунктам, как мне быстрее всего, исправить найденные ошибки.
-				Отвечай только на русском языке."
+					pref="Помоги мне понять, в чем может быть проблема. Компилятор C++11 нашел ошибки."
+					post="Найди оптимальное решение по поиску и исправлению ошибок, указанных выше и
+					напиши инструкцию шаг за шагом, по пунктам, как мне быстрее всего, исправить найденные ошибки.
+					Отвечай только на русском языке."
 
-				if [ -n "${error_file_name}" ]; then
+					if [ -n "${error_file_name}" ]; then
 
-					files_contain="${sep}"
-					for src_file in ${error_file_name}; do
-						file_full=$(find "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" -type f -name "${src_file}")
-						if [ "${files_contain}" = "${sep}" ]; then
-							files_contain="${files_contain}#${src_file}\n\n$(cat "${file_full}" )"
-						else
-							files_contain="${files_contain}\n\n#${src_file}\n\n$(cat "${file_full}")"
-						fi
-					done
-					files_contain="${files_contain}\n${sep}"
+						files_contain="${sep}"
+						for src_file in ${error_file_name}; do
+							file_full=$(find "${APP_MAKE_BUILD_PATH}/${SRC_PATH}" -type f -name "${src_file}")
+							if [ "${files_contain}" = "${sep}" ]; then
+								files_contain="${files_contain}#${src_file}\n\n$(cat "${file_full}" )"
+							else
+								files_contain="${files_contain}\n\n#${src_file}\n\n$(cat "${file_full}")"
+							fi
+						done
+						files_contain="${files_contain}\n${sep}"
 
-					files_contain="Код, в котором компилятор нашел ошибки:\n${files_contain}"
-					compile_text="\nСписок ошибок:\n${sep}${compile_text}\n\n${sep}"
-					question="${pref}\n${sep}${files_contain}${compile_text}${post}"
-				else
-					question="${pref}\n${compile_text}\n${post}"
-				fi
-				question=$(printf "${question}" | sed 's/"/\\\"/g;' | sed "s/\'/\\\"/g;" | sed 's/\\"/@/g;s/"$//g;s/@/\\"/g;s/[\t\r]//g;')
-				answer=$(ask_chat "${question}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}")
-				green "${answer}\n"
-				show_line
+						files_contain="Код, в котором компилятор нашел ошибки:\n${files_contain}"
+						compile_text="\nСписок ошибок:\n${sep}${compile_text}\n\n${sep}"
+						question="${pref}\n${sep}${files_contain}${compile_text}${post}"
+					else
+						question="${pref}\n${compile_text}\n${post}"
+					fi
+					question=$(printf "${question}" | sed 's/"/\\\"/g;' | sed "s/\'/\\\"/g;" | sed 's/\\"/@/g;s/"$//g;s/@/\\"/g;s/[\t\r]//g;')
+					answer=$(ask_chat "${question}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}")
+					print_info "${answer}\n"
+					print_line
+				}
 			}
 			exit 1
 		}
@@ -335,9 +334,9 @@ print_compile_header(){
 #	print_mess "${PREF}Собираем пакет ${BLUE}${APP_NAME}${NOCL} вер. ${BLUE}${full_ver}${NOCL}"
 	print_mess "${PREF}Собираем пакет ${BLUE}${APP_NAME}${NOCL} вер. ${BLUE}$(get_full_package_version)${NOCL}"
 	check_arch								#	проверяем архитектуру сборки
-	show_line
-	echo -e "${PREF}Сборка запущена: ${BLUE}$(LC_ALL=ru_RU.UTF-8 date -d "+3 hours" | sed 's/Europe/Россия, Москва/' | tr -s " ")${NOCL}";
-	show_line
+	print_line
+	print_mess "${PREF}Сборка запущена: ${BLUE}$(LC_ALL=ru_RU.UTF-8 date -d "+3 hours" | sed 's/Europe/Россия, Москва/' | tr -s " ")${NOCL}";
+	print_line
 }
 
 #-------------------------------------------------------------------------------
@@ -348,9 +347,9 @@ print_compile_foot(){
 	start_time=${1}
 	end_time=$(date "+%s")
 	compile_period=$(time_diff "${start_time}" "${end_time}")
-	echo -e "${PREF}${BLUE}Сборка пакета завершена.${NOCL}"
-	echo -e "${PREF}${BLUE}Продолжительность составила:${compile_period}${NOCL}."
-	show_line
+	print_mess "${PREF}${BLUE}Сборка пакета завершена.${NOCL}"
+	print_mess "${PREF}${BLUE}Продолжительность составила:${compile_period}${NOCL}."
+	print_line
 }
 
 #-------------------------------------------------------------------------------
@@ -360,7 +359,17 @@ print_compile_foot(){
 #-------------------------------------------------------------------------------
 prepare_to_run(){
 	find "${APPS_PATH}" -name .DS_Store -exec rm -f {} \;
-	sed -i "s/int ${APP_NAME}()/int main()/" "${APP_MAKE_BUILD_PATH}/${SRC_PATH}/${APP_NAME}.cpp"
+
+
+    if [ "$(stat -c '%G' "${APP_MAKE_BUILD_PATH}")" != "${GROUP}" ] \
+    || [ "$(stat -c '%U' "${APP_MAKE_BUILD_PATH}")" != "${USER}" ]; then
+        chown -R "${USER}:${GROUP}" "${APP_MAKE_BUILD_PATH}"
+    fi
+
+	main_file_name=main #${APP_NAME}
+	ls -ila ${APP_MAKE_BUILD_PATH}
+
+	sed -i "s/int ${APP_NAME}()/int main()/" "${APP_MAKE_BUILD_PATH}/${DEV_SRC_PATH}/${main_file_name}.${DEVELOP_EXT}"
 }
 
 #-------------------------------------------------------------------------------
@@ -379,9 +388,9 @@ make_all(){
 	create_makefile && {										#	создаем файл манифеста Makefile
 		do_package_make "${deb}"								# 	производим сборку пакета
 		copy_file "$(get_ipk_package_file)" "${PACKAGES_PATH}"	# 	копируем ipk файл в локальную папку paсkages
-		show_line
+		print_line
 		copy_and_install_package								# 	копируем и устанавливаем собранный пакет на устройство
-		show_line
+		print_line
 		print_compile_foot "${time_start}"						# 	печатаем футроп компиляции
 	}
 }

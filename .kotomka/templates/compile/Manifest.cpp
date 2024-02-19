@@ -18,7 +18,7 @@ define Package/@APP_NAME
 	TITLE:=@TITLE
 	SECTION:=utils
 	URL:=@GITHUB
-	DEPENDS:=+libstdcpp +librt +libpthread
+	DEPENDS:=+libstdcpp +librt +libpthread +newt
 	PKGARCH:=@PKGARCH
 endef
 

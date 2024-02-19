@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# DEBUG=1 - отладка ВКЛ
+# DEBUG=0 - отладка ОТКЛ
+DEBUG=1
+
+# Ширина рабочей области
+SCREEN_WIDTH=84
+
+# Считываем данные от пользователя
+read_val(){
+	local def=${3}
+	[ -n "${def}" ] && def="['${3}']"
+	while :
+	do
+		read -p "${1} ${def}: " val
+		if [ -n "${val}" ]; then
+			eval "${2}=${val}"
+			break
+		elif [ -n "${3}"  ]; then
+			eval "${2}=${3}"
+			break
+		else
+			printf "\e[A"
+		fi
+	done
+
+}
+# печатаем линию
+print_line()(printf "%${SCREEN_WIDTH}s\n" | sed 's/ /═/g')
+# печатаем инфо сообщение
+print_info()(print "${1}\n")
+# проверяем наличие команды на устройстве
+is_here()([ -n "$(command -v ${1})" ])
+
+clear
+
+if [ "${DEBUG}" -eq 1 ] ; then
+	APPS_PATH='/apps'
+	APP_NAME='my_app'
+else
+	print_line
+	read_val "Введите путь, где будут храниться все Ваши проекты" APPS_PATH '/apps'
+	read_val "Введите имя Вашего проекта, разделитель '-' запрещен " APP_NAME 'my_app'
+fi
+print_line
+
+PATH_TO_MY_APP="${APPS_PATH}/${APP_NAME}"
+
+run_path=$(pwd)
+# переходим в корневую папку
+cd /
+# установка docker
+is_here docker || {
+	curl -fsSL https://get.docker.com -o get-docker.sh
+	DRY_RUN=1 sh ./get-docker.sh
+}
+
+
+# установка обязательных пакетов
+is_here git || apps_to_install="git"
+is_here nano || apps_to_install="${apps_to_install} nano"
+[ -n "${apps_to_install}" ] && eval "apt install -y ${apps_to_install}"
+echo "${APPS_ROOT}"
+
+# создаем папку для всех приложений
+[ -d "${APPS_PATH}" ] || mkdir "${APPS_PATH}" && cd "${APPS_PATH}"
+
+# Клонируем репозиторий Котомки
+[ -d "${PATH_TO_MY_APP}" ] && rm -rf "${PATH_TO_MY_APP:?}"
+git clone http://github.com/qzeleza/katomka.git
+mv ./katomka/ "${PATH_TO_MY_APP}"
+
+# перемещаем все файлы с большой буквы в папку .kotomka,
+# так как для новому проекту они помеха
+mv ${PATH_TO_MY_APP}/[[:upper:]]* ${PATH_TO_MY_APP}/.kotomka
+
+# настраиваем переменные под себя
+cd ${PATH_TO_MY_APP}
+[ "${DEBUG}" -eq 0 ] && nano ./build.conf
+
+[ "$?" ] && {
+#	если файл был запущен с аргументом yes
+	sed -i "s/@APP_NAME/${APP_NAME}/g" "${PATH_TO_MY_APP}/build.conf"
+
+#	меняем название текущей папки для размещения всех проектов
+	path=$(echo "${APPS_PATH}" | sed 's|\/|\\/|g')
+	sed -i "s/@APPS_ROOT/${path}/g" "${PATH_TO_MY_APP}/.kotomka/scripts/libraries/library"
+
+#	меняем расширение для основного файла сборки значением из файла конфигурации
+	dev_extension=$(cat < "${PATH_TO_MY_APP}/build.conf" | sed -n 's/DEV_LANGUAGE=\(.*\)/\1/p')
+	dev_extension=$(echo "${dev_extension}" | tr '[:upper:]' '[:lower:]')
+	sed -i "s/@DEVELOP_EXT/${dev_extension}/g" "${PATH_TO_MY_APP}/.kotomka/scripts/libraries/library"
+
+# 	Дописываем GPT_TOKEN, если он был введен в файл конфигурации в файл library
+	gtp_token=$(cat < "${PATH_TO_MY_APP}/build.conf" | sed -n 's/GPT_TOKEN=\(.*\)/\1/p')
+	[ -n "${gtp_token}" ] && sed -i "s/@GPT_TOKEN/${gtp_token}/g" "${PATH_TO_MY_APP}/.kotomka/scripts/libraries/library"
+
+	echo "${1}" | grep -qE 'yes|YES|y|Y' && {
+		# производим запуск сборки пакета
+		if ./build.run build ; then
+			print_info "Первоначальная сборка docker имиджа прошла успешно!"
+			print_info "Переходим к тестовой сборке бинарных файлов для выбранной платформы"
+
+		 	if ./build.run all make ; then
+				print_info "Тестовая сборка прошла успешно."
+			 	print_info "Файлы для дальнейшей разработки находятся в папке ${PATH_TO_MY_APP}/code/scr"
+				print_info "Файлы манифеста для разработки находятся в папке ${PATH_TO_MY_APP}/code/make"
+				print_info "Файлы для тестов находится в папке ${PATH_TO_MY_APP}/test"
+			 	print_info "Для справки запустите ./build.run help"
+			else
+				print_line
+				print_info "Тестовая сборка прошла с ошибками."
+			fi
+
+			print_line
+		else
+			print_line
+			print_info "Установка завершилась с ошибками."
+			print_line
+		fi
+
+	}
+}
+
+# удаляем файл инсталляции пакета
+[ "${DEBUG}" -eq 0 ] && rm -f ${run_path}/${0} ${PATH_TO_MY_APP}/${0}

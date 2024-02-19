@@ -32,11 +32,21 @@ PACKAGE_APP_NAME=kotomka
 DEV_NAME_PATH=.${PACKAGE_APP_NAME}
 PATH_PREFIX="../."
 DEV_CONFIG_NAME=build.conf
-DEV_CONFIG_FILE="../../${DEV_CONFIG_NAME}"
+DEV_CONFIG_FILE="../../build.conf"
 DEVELOP_EXT=''
 
 . "${DEV_CONFIG_FILE}"
-. ./library "${PATH_PREFIX}."
+
+. ./libraries/screen
+set_esc_colors
+set_esc_sims
+set_esc_eraser
+set_esc_cursor
+
+. ./libraries/status
+. ./libraries/traps
+
+. ./libraries/library "${PATH_PREFIX}."
 
 #-------------------------------------------------------------------------------
 # Возвращаем 0 в случае, если текущая система является MAC OS
@@ -85,7 +95,8 @@ FULL_VERSION="${PACKAGE_VERSION} ${PACKAGE_RELEASE}";
 DEBUG=YES # флаг отладки процесса сборки образа
 #-------------------------------------------------------------------------------
 APP_NAME=$(pwd | sed "s/.*\\${APPS_ROOT}\/\(.*\).*$/\1/;" | cut -d'/' -f1)
-IMAGE_NAME=$(echo "${DOCKER_ACCOUNT_NAME}" | awk '{print tolower($0)}')/${APP_NAME}-dev
+PACKAGE_NAME=${APP_NAME}
+IMAGE_NAME=$(echo "${DOCKER_ACCOUNT_NAME}" | awk '{print tolower($0)}')/${APP_NAME}_dev
 
 #-------------------------------------------------------------------------------
 #	Пути к файлам на машине разработчика
@@ -122,17 +133,18 @@ reset_data(){
 
 	answer=''; read_ynq "Будут удалены все контейнеры и исходники приложения, ${RED}УВЕРЕНЫ${NOCL} [Y/N/Q]? " answer
     [ "${answer}" = y ] && {
-    	show_line
+    	print_line
     	ready "${PREF}Данные удалены "
     	rm -rf "${PATH_PREFIX}${DEV_ROOT_PATH}"
+    	docker system prune --all --force --volumes
 		purge_containers "$(docker ps -aq -f name="${APP_NAME}")" &>/dev/null && {
 			when_ok
-			warning "${PREF}Пакет сброшен в первоначальное состояние.${NOCL}"
-			warning "${PREF}Папка с исходниками ${RED}${DEV_ROOT_PATH}${NOCL} удалена!${NOCL}"
-			warning "${PREF}Удалены все контейнеры приложения ${RED}${APP_NAME}${NOCL}!${NOCL}"
-		} || when_bad "с ошибками!"
+			print_warning "${PREF}Пакет сброшен в первоначальное состояние."
+			print_warning "${PREF}Папка с исходниками ${RED}${DEV_ROOT_PATH}${NOCL} удалена!"
+			print_warning "${PREF}Удалены все контейнеры приложения ${RED}${APP_NAME}${NOCL}!"
+		} || when_err "с ошибками!"
 
-		show_line
+		print_line
     }
 
 
@@ -160,9 +172,9 @@ prepare_makefile(){
     code_dir=$(escape "${APPS_ROOT}/${APP_NAME}${DEV_ROOT_PATH//./}/")
     source_dir=$(escape "${APPS_ROOT}/${APP_NAME}${DEV_ROOT_PATH//./}/${DEV_SRC_PATH}")
 
-    make_file="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/Makefile"
+    make_file="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}Makefile"
 
-    sed -i "${SEP}" "s/@APP_NAME/$(escape "${PACKAGE_NAME}")/g; \
+    sedi "s/@APP_NAME/$(escape "${PACKAGE_NAME}")/g; \
          s/@PACKAGE_VERSION/$(escape "${PACKAGE_VERSION}" | tr -d ' ')/g; \
          s/@PACKAGE_STAGE/$(escape "${PACKAGE_STAGE}" | tr -d ' ')/g; \
          s/@APP_ROUTER_DIR/${app_router_dir}/g; \
@@ -171,13 +183,14 @@ prepare_makefile(){
          s/@AUTHOR/$(escape "${AUTHOR_NAME}")/g; \
          s/@EMAIL/$(escape "${AUTHOR_EMAIL}")/g; \
          s/@GITHUB/${github_url}/g; \
+         s/@PKGARCH/${github_url}/g; \
          s/@CATEGORY/$(escape "${PACKAGE_CATEGORY}")/g; \
          s/@SUBMENU/$(escape "${PACKAGE_SUBMENU}")/g; \
          s/@TITLE/$(escape "${PACKAGE_TITLE}")/g; \
          s/@SOURCE_DIR/${source_dir}/g; \
-         s/@CODE_DIR/${code_dir}/g;" "${make_file}"
+         s/@CODE_DIR/${code_dir}/g;" ${make_file}
 
-    awkfun -i inplace -v r="${PACKAGE_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' "${make_file}"
+    awkfun -v r="${PACKAGE_DESCRIPTION}" '{gsub(/@DESCRIPTION/,r)}1' ${make_file} > temp.txt && mv temp.txt ${make_file}
 
 }
 
@@ -211,7 +224,7 @@ create_sections (){
 set_dev_language(){
 
 	# Исправляем ошибки при различном написании языка разработки (русский и англиский)
-	case "$(echo "${DEV_LANGUAGE}" | awk '{print tolower($0)}')" in
+	case "${DEV_LANGUAGE,,}" in
 		си|c|cc|сс|ccc|ссс)
 			DEVELOP_EXT='c'				# на английском
 			lang="Си"					# на русском
@@ -221,14 +234,14 @@ set_dev_language(){
 			lang="С++"					# на английском
 			;;
 		bash|sh|shell)
-			DEVELOP_EXT='bash'			# на английском
+			DEVELOP_EXT='sh'			# на английском
 			lang="Bash"
 			;;
 	esac
 
-    warning "${PREF}Заявленным языком разработки является '${lang}'"
-    warning "${PREF}Производим замену файлов в соответствии с установками в ${DEV_CONFIG_NAME}"
-    show_line
+    print_warning "${PREF}Заявленным языком разработки является '${lang}'"
+    print_warning "${PREF}Производим замену файлов в соответствии с установками в ${DEV_CONFIG_NAME}"
+    print_line
 
     mainfile_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_SRC_PATH}"
     makefile="${mainfile_path}/Makefile"
@@ -247,24 +260,25 @@ set_dev_language(){
             cp "../templates/code/src/main.${DEVELOP_EXT}"             "${mainfile_path}/${APP_NAME}"
             ;;
         *)
-            show_line
-            error "${PREF}Не распознан язык разработки в файле ${DEV_CONFIG_FILE}"
-            warning "${PREF}Текущее значение DEV_LANGUAGE = ${DEV_LANGUAGE}."
-            warning "${PREF}Задайте одно из значений: C (Си), CPP (C++) или BASH."
-            warning "${PREF}Значения можно задавать на русском или английском."
-            show_line
+            print_line
+            print_error"${PREF}Не распознан язык разработки в файле ${DEV_CONFIG_FILE}"
+            print_warning "${PREF}Текущее значение DEV_LANGUAGE = ${DEV_LANGUAGE}."
+            print_warning "${PREF}Задайте одно из значений: C (Си), CPP (C++) или BASH."
+            print_warning "${PREF}Значения можно задавать на русском или английском."
+            print_line
             exit 1
             ;;
     esac
 
     manifest_scripts_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}${DEV_MANIFEST_DIR_NAME}"
 #   создаем скрипты для сборки файла манифеста
-    mkdir_when_not "${manifest_scripts_path}"
+    mkdir_when_no "${manifest_scripts_path}"
 
 #   и копируем сам файл манифеста
-    makefile_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${arch}"
-    mkdir_when_not "${makefile_path}"
-    cp -f "../templates/compile/Manifest.${DEVELOP_EXT}"     "${makefile_path}Makefile"
+#    makefile_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}/${arch}"
+    makefile_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_COMPILE_NAME}"
+    mkdir_when_no "${makefile_path}"
+    cp -f "../templates/compile/Manifest.${DEVELOP_EXT}"     "${makefile_path}/Makefile"
 
     #   создаем секции манифеста и файлы для них
     create_sections "${manifest_scripts_path}"
@@ -273,8 +287,10 @@ set_dev_language(){
 	prepare_makefile
 
 #   меняем имя пакета в файле для удаленных тестов
-    cp -rf "../templates/tests/" "${DEV_REMOTE_TESTS_NAME}"
-    sedi "s|@APP_NAME|${APP_NAME}|g"                    "${DEV_REMOTE_TESTS_NAME}/modules/hello.bats"
+	mkdir_when_no "${DEV_REMOTE_TESTS_NAME}"
+    cp -rf ../templates/tests/* ${DEV_REMOTE_TESTS_NAME}
+    sedi "s|@APP_NAME|${APP_NAME}|g"  ${DEV_REMOTE_TESTS_NAME}/modules/hello.bats
+
 }
 
 
@@ -287,8 +303,8 @@ check_dev_language(){
 
     if [ -n "${manifest_file}" ]; then
         if ! cat < "${manifest_file}" | grep -qi "для ${DEVELOP_EXT}"; then
-            error "${PREF}Обнаружено несоответствие файлов проекта с заявленным"
-            error "${PREF}языком разработки для архитектуры процессора '${arch}'"
+            print_error"${PREF}Обнаружено несоответствие файлов проекта с заявленным"
+            print_error"${PREF}языком разработки для архитектуры процессора '${arch}'"
             set_dev_language
         fi
     else
@@ -304,14 +320,15 @@ check_dev_language(){
 #-------------------------------------------------------------------------------
 prepare_code_structure(){
 
-    mkdir_when_not  "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_SRC_PATH}"
+    mkdir_when_no  "${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_SRC_PATH}"
 
 #   создаем папку с тестами
     [ -n "${DEV_REMOTE_TESTS_NAME}" ] && ! [ -d "${DEV_REMOTE_TESTS_NAME}" ] && {
-        mkdir_when_not "${DEV_REMOTE_TESTS_NAME}"
-        cp -rf "../templates/tests/" "${DEV_REMOTE_TESTS_NAME}"
-        sedi "s|@APP_NAME|${APP_NAME}|g"                    "${DEV_REMOTE_TESTS_NAME}/modules/hello.bats"
+        mkdir_when_no "${DEV_REMOTE_TESTS_NAME}"
+        cp -rf ../templates/tests/* ${DEV_REMOTE_TESTS_NAME}
+        sedi "s|@APP_NAME|${APP_NAME}|g"  "${DEV_REMOTE_TESTS_NAME}/modules/hello.bats"
     }
+
 #   создаем папку /opt с минимальной структурой, как на устройстве
     opt_path="${PATH_PREFIX}${DEV_ROOT_PATH}/${DEV_OPT_PATH}"
     [ -n "${DEV_OPT_PATH}" ] && ! [ -d "${opt_path}" ] && {
@@ -338,8 +355,8 @@ check_system(){
 #    Если система MAC OS X
     if is_mac_os_x; then
         if ! [ -f /usr/local/bin/gawk ] ; then
-            echo -e "${BLUE}${PREF}Производим установку недостающего пакета 'gawk' для 'Mac OS X'${NOCL}"
-            show_line
+            print_warning "${PREF}Производим установку недостающего пакета 'gawk' для 'Mac OS X'"
+            print_line
             brew install gawk
         fi
         SEP=''
@@ -372,7 +389,7 @@ get_container_list(){
 	 	   			 sed -n "s/^\(.*\)/\*\1/p")
 	exited=$(docker ps -aq --filter name="${APP_NAME}-*" --filter status=exited --format "{{.Names}}" )
 	[ -n "${running}" ] && det=' ' || det=''
-	echo -e "${running}${det}${exited}"
+	printf "${running}${det}${exited}"
 }
 
 #-------------------------------------------------------------------------------
@@ -408,27 +425,28 @@ run_when_error(){
 	err_log=$(docker logs "${1}" --details --tail 150 | grep -iE "${errors_list}" -A100 -B10)
 	if [ -n "${err_log}" ]; then
 
-		show_line;
+		print_line ;
 		center "${RED}В ПРОЦЕССЕ РАБОТЫ ВОЗНИКЛИ ОШИБКИ${NOCL}"
-		show_line
+		print_line
 
 		print_error_log_line "НАЧАЛО ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬇'
-		print_line_sim -
+		print_line -
 
-		echo -ne "${YELLOW}"
-		echo "${err_log}" | sed 's/^\(.*\)/\t\t\1/g'
-		echo -e "${NOCL}"
+		printf "${YELLOW}"
+		printf "${err_log}\n" | sed 's/^\(.*\)/\t\t\1/g'
+		printf "${NOCL}\n"
 
 
-		print_line_sim -
+		print_line -
 		print_error_log_line "КОНЕЦ ЖУРНАЛА КОНТЕЙНЕРА ${container_id_or_name}" '⬆'
-		show_line
+		print_line
 		echo
 
 	fi
 
 
 }
+
 #-------------------------------------------------------------------------------
 #  Запускаем Docker exec с параметрами
 #   $1 - container_id
@@ -445,6 +463,13 @@ docker_exec(){
     if [ "${root}" = root ]; then user="root:root"; else user="${USER}:${GROUP}"; fi
     if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; TERMINAL='true';
     else TERMINAL='false'; fi
+
+	# Создаем их, если не существуют
+	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${GROUP}"
+
+#	Устанавливаем права на папку сборки, пользователя, который должен быть по умолчанию
+	mkdir -p ${PATH_TO_MY_APP}/code && chown -R ${user_name}:${group_name} ${PATH_TO_MY_APP}/code &>/dev/null
+
     if ! docker exec \
 			-i -t \
 			--workdir "${WORK_PATH_IN_CONTAINER}" \
@@ -453,23 +478,35 @@ docker_exec(){
 			--env ROOT_PATH="${DEV_ROOT_PATH//.\//}" \
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
+           	--env GPT_TOKEN="${GPT_TOKEN}" \
            	--env ARCH_BUILD="${arch_build}" \
 			--env APP_NAME="${APP_NAME}" \
            	--env IPK_PATH="${DEV_IPK_NAME}" \
            	--env TERMINAL="${TERMINAL}" \
            	--user "${user}" \
-           	 "${container_id}" /bin/bash ${script_to_run} ; then
+           	 "${container_id}" /bin/bash ${script_to_run} >/dev/null 2>&1 ; then
+
+		print_error "Произошла ошибка при подключении к контейнеру..."
+		print_warning "Сейчас контейнер будет остановлен, удален и пересобран."
 
 		container_name="$(get_container_name "${arch_build}")"
 		container_id=$(docker ps -qa  --filter name="${container_name}")
 
-		if [ -n "${script_to_run}" ] ; then
-			run_when_error "${container_name}"
-			exit 1
+		docker stop "${container_id}" &>/dev/null && docker rm "${container_id}" &>/dev/null
+		container_manager_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}"
+		exit 0;
+
+#		if [ -n "${script_to_run}" ] ; then
+#			run_when_error "${container_name}"
+#			exit 1
 #		else
-#			docker start "${container_id}"
-#			docker_exec "${container_id}" "${SCRIPT_TO_CLEAN}" "${root}" "${arch_build}"
-		fi
+#		docker stop "${container_id}"
+#		docker rm "${container_id}"
+#		docker_run "" "${container_name}" "${arch_build}" "${root}"
+#		container_name="$(get_container_name "${arch_build}")"
+#		container_id=$(docker ps -qa  --filter name="${container_name}")
+#		docker_exec "${container_id}" "${SCRIPT_TO_CLEAN}" "${root}" "${arch_build}"
+#		fi
    	fi
 
 }
@@ -502,6 +539,7 @@ docker_run(){
 			--env ROOT_PATH="${DEV_ROOT_PATH//.\//}" \
 			--env OPT_PATH="${DEV_OPT_PATH}" \
            	--env SRC_PATH="${DEV_SRC_PATH}" \
+			--env GPT_TOKEN="${GPT_TOKEN}" \
 		   	--env IPK_PATH="${DEV_IPK_NAME}" \
 			--env APP_NAME="${APP_NAME}" \
 			--env TERMINAL="${TERMINAL}" \
@@ -539,7 +577,7 @@ connect_when_run(){
 
    	ready "${PREF}Контейнер разработки ${BLUE}${container_name}${NOCL}" && when_ok "ЗАПУЩЕН"
     ready "${PREF}Производим подключение..." && when_ok
-    show_line
+    print_line
     docker_exec "${container_id_running}" "${script_to_run}" "${_user}" "${arch}"
 }
 
@@ -557,10 +595,11 @@ connect_when_stopped(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    ready  "${PREF}Контейнер разработки ${BLUE}${container_name}${NOCL} смонтирован, но..." && when_bad "ОСТАНОВЛЕН"
+    ready  "${PREF}Контейнер разработки ${BLUE}${container_name}${NOCL} смонтирован, но..." && when_err "ОСТАНОВЛЕН"
 	ready "${PREF}Монтируем контейнер..."
-    docker start "${container_id_exited}" &> /dev/null && when_ok || when_bad
-    show_line
+	docker start "${container_id_exited}" && when_ok || when_err
+    print_line
+    print_warning "${PREF}Заходим внутрь контейнера..."
     docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
 
 }
@@ -577,19 +616,20 @@ connect_when_not_mounted(){
     _user=${USER}
 
     [ "${run_with_root}" = yes ] && _user=root
-    echo -en "${PREF}Контейнер ${BLUE}${container_name}${NOCL}" && when_bad "ЕЩЕ НЕ СОЗДАН"
+    ready "${PREF}Контейнер ${BLUE}${container_name}${NOCL}" && when_ok "ЕЩЕ НЕ СОЗДАН"
 
 
     user_group_id="${U_ID}:${G_ID}"
     [ -z "${script_to_run}" ] && [ "${run_with_root}" = yes ] && user_group_id="root:root";
 #   а если контейнера нет - то создаем его и запускаем
-	ready "${PREF}Создаем контейнер. Ожидайте, займет некоторое время..."
-	docker_run "" "${container_name}" "${arch}" "${user_group_id}" && when_ok || when_bad
+	ready  "${PREF}Создаем контейнер. Ожидайте, займет некоторое время..."
+	docker_run "" "${container_name}" "${arch}" "${user_group_id}" && when_ok || when_err
 	container_id=$(docker ps -qa  --filter name="${container_name}")
 
 	ready "${PREF}Монтируем контейнер ${BLUE}${container_name}${NOCL}..."
-	docker start "${container_id}" &> /dev/null && when_ok || when_bad
-	show_line
+	docker start "${container_id}" &> /dev/null && when_ok || when_err
+	print_info ""
+	print_line
 	docker_exec  "${container_id}" "${1}" "${_user}" "${arch}"
 #    fi
 }
@@ -599,11 +639,10 @@ connect_when_not_mounted(){
 #-------------------------------------------------------------------------------
 build_image(){
 
-    echo -e "${PREF}Запускаем сборку ${BLUE}НОВОГО${NOCL} образа ${IMAGE_NAME}"
-    show_line
+    ready "Запускаем сборку НОВОГО образа ${BLUE}${IMAGE_NAME}${NOCL}"
 
-    context=$(dirname "$(pwd)")
-    if docker build \
+    context="$(dirname "$(pwd)")/"
+    docker build \
         --tag "${IMAGE_NAME}" \
         --build-arg UID="${U_ID}" \
         --build-arg GID="${G_ID}" \
@@ -613,17 +652,19 @@ build_image(){
         --build-arg APP_NAME="${APP_NAME}" \
         --build-arg TZ=Europe/Moscow \
         --file "${DOCKER_FILE}" \
-        "${context}/" ; then
-
-        show_line
-        ready "${PREF}Docker-образ собран без ошибок."
-
-    else
-    	error="${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
-    	run_when_error "${IMAGE_NAME}" "${error}"
-        exit 1
-    fi
-    show_line
+        "${context}" >/dev/null 2>&1 && when_ok || when_err "ПРОБЛЕМА" \
+        	"${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
+#
+#        print_line
+#        print_info "${PREF}Docker-образ собран без ошибок."
+#
+#    else
+#    	error="${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
+#    	run_when_error "${IMAGE_NAME}" "${error}"
+#        exit 1
+#    fi
+    print_line
+    exit
 }
 
 
@@ -643,7 +684,7 @@ rebuild_image(){
         [ -n "${container_id_exited}" ] && docker rm ${container_id_exited} &> /dev/null
     fi
 
-    get_image_id && docker rmi -f "${IMAGE_NAME}" && when_ok || when_bad
+    get_image_id && docker rmi -f "${IMAGE_NAME}" && when_ok || when_err
 	build_image
 }
 
@@ -669,9 +710,9 @@ container_run_to_make(){
                 connect_when_not_mounted "${script_to_run}" "${run_with_root}" "${arch}" "${container_name}"
             else
                 build_image && {
-                	warning "${PREF}Запускаем сборку пакета в контейнере '${container_name}' ..."
-                	show_line
-                	manager_container_to_make "${script_to_run}" "" "${arch}"
+                	print_warning "${PREF}Запускаем сборку пакета в контейнере '${container_name}' ..."
+                	print_line
+                	container_manager_to_make "${script_to_run}" "" "${arch}"
                 }
 
             fi
@@ -702,8 +743,8 @@ ask_arch_to_run(){
 		fi
 	else act="${BLUE}терминала${NOCL}"; fi
 
-	echo -e "Доступные ${BLUE}архитектуры${NOCL} для ${act} [Q/q - выход]:"
-	show_line
+	print_info "Доступные ${BLUE}архитектуры${NOCL} для ${act} [Q/q - выход]:"
+	print_line
 	count=1; #container_list=$(get_container_list)
 	for _arch_ in ${ARCH_LIST} ; do
 
@@ -714,24 +755,24 @@ ask_arch_to_run(){
 			if [ "${script_to_run}" = remove ] ; then
 				if echo "${list_arch_menu}" | grep -q "${_arch_}" ; then
 					echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
-					when_not_bad "ОСТАНОВЛЕН"
+					when_ok "ОСТАНОВЛЕН" "${BLUE}"
 				else
 					count=$((count-1))
 				fi
 			else
 				echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
 				if echo "${list_arch_menu}"  | grep -q "${_arch_}" ; then
-					when_not_bad "ОСТАНОВЛЕН"
+					when_ok "ОСТАНОВЛЕН" "${BLUE}"
 				else
-					when_bad "НЕ СОЗДАН"
+					when_err "НЕ СОЗДАН"
 				fi
 			fi
 		fi
 		count=$((count+1))
 	done
-	show_line
+	print_line
 	read_choice "Выберите номер позиции из списка: " "${count}" choice
-	show_line
+	print_line
 }
 
 
@@ -740,20 +781,20 @@ ask_arch_to_run(){
 #-------------------------------------------------------------------------------
 print_header(){
 
-	arch=$(echo "${1}" | awk '{print toupper($0)}')
-	user=$(echo "${2}" | awk '{print toupper($0)}')
-	app=$(echo "${APP_NAME}" | awk '{print toupper($0)}')
+	arch=$(printf "${1}" | awk '{print toupper($0)}')
+	user=$(printf "${2}" | awk '{print toupper($0)}')
+	app=$(printf "${APP_NAME}" | awk '{print toupper($0)}')
 
-	echo ""
-	echo ""
+#	echo ""
+#	echo ""
 
-	echo -e "		ПОЛЬЗОВАТЕЛЬ: ${GREEN}${user}${NOCL}"
-	echo -e "		       ПАКЕТ: ${GREEN}${app}${NOCL}"
-	echo -e "		 АРХИТЕКТУРА: ${GREEN}${arch}${NOCL}"
-
-	echo ""
-	echo ""
-	show_line
+	print_info "		ПОЛЬЗОВАТЕЛЬ: ${GREEN}${user}${NOCL}"
+	print_info "		       ПАКЕТ: ${GREEN}${app}${NOCL}"
+	print_info "		 АРХИТЕКТУРА: ${GREEN}${arch}${NOCL}"
+#
+#	echo ""
+#	echo ""
+	print_line
 }
 
 #-------------------------------------------------------------------------------
@@ -771,8 +812,8 @@ container_manager_to_make(){
 
     if is_mac_os_x ; then
         ps -x | grep 'Docker.app' | grep -vq grep || {
-            error "${PREF}Сервис Docker не запущен! Для запуска наберите команду 'open -a Docker'"
-            show_line
+            print_error"${PREF}Сервис Docker не запущен! Для запуска наберите команду 'open -a Docker'"
+            print_line
             exit 1
         }
     fi
@@ -780,7 +821,7 @@ container_manager_to_make(){
     if [ "${DEVELOP_EXT}" = bash ] ; then
 
     	print_header "BASH" "${_user}"
-		show_line
+		print_line
         container_run_to_make "${script_to_run}" "${run_with_root}" "$(get_container_name "all")" "all"
     else
 #		если язык разработки Си или С++
@@ -809,8 +850,8 @@ container_manager_to_make(){
 #        		если указана в аргументах конкретная архитектура
 				choice=$(echo "${list_arch}" | grep -n "${arch_to_run}" | head -1 | cut -d':' -f1)
 				if [ -z "${choice}" ] ; then
-					error "${PREF}Неверно указана архитектура для запуска контейнера!"
-					show_line
+					print_error"${PREF}Неверно указана архитектура для запуска контейнера!"
+					print_line
 					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
 				fi
 			fi
@@ -852,7 +893,7 @@ package_version_set(){
         ver_main="$(echo "${ver_to_set}" | tr -d 'a-zA-Z' | cut -d '-' -f1) "
 
         if [ -z "$(echo "${ver_main}" | tr -d ' ')" ]; then
-            error "${PREF}Данные о версии пакета введены некорректно!"
+            print_error"${PREF}Данные о версии пакета введены некорректно!"
         else
             if echo "${ver_to_set}" | grep -q '-' ; then
                 ver_stage="$(echo "${ver_to_set}" | cut -d '-' -f2 | tr -d '0-9') "
@@ -870,7 +911,7 @@ package_version_set(){
 				set_version_part "PACKAGE_STAGE"    "${ver_stage}"
 				set_version_part "PACKAGE_RELEASE"  "${ver_release}"
 				full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
-			} && when_ok || when_bad
+			} && when_ok || when_err
 
         fi
     else
@@ -880,7 +921,7 @@ package_version_set(){
         full_ver=$(echo "${ver_main}${ver_stage}${ver_release}" | sed -e 's/[[:space:]]*$//' | tr ' ' '-')
         ready "${PREF}Текущая версия пакета " && when_ok "${full_ver}"
     fi
-    show_line
+    print_line
 }
 
 #-------------------------------------------------------------------------------
@@ -894,9 +935,9 @@ remove_arch_container(){
 	if echo "${list_dc//\*/}" | grep -q "${dc_name}" ; then
 		ready "${PREF}Удаляем контейнер c архитектурой ${dc_name}..."
 		container_id=$(get_container_id "${dc_name}")
-		purge_containers "${container_id}" &>/dev/null && when_ok "УСПЕШНО" || when_bad "С ОШИБКАМИ"
+		purge_containers "${container_id}" &>/dev/null && when_ok "УСПЕШНО" || when_err "С ОШИБКАМИ"
 	else
-		warning "Контейнер с архитектурой не существует ${dc_name}" && when_bad "пропускаем"
+		print_warning "Контейнер с архитектурой не существует ${dc_name}" && when_err "пропускаем"
 	fi
 }
 #-------------------------------------------------------------------------------
@@ -923,8 +964,8 @@ manage_to_remove_arch_container(){
 					choice=$(echo "${list_arch}" | grep -n "${arch_build}" | head -1 | cut -d':' -f1)
 					if [ -z "${choice}" ] ; then
 						[[ "${arch_build}" =~ remove|rm|del|-rm ]] || {
-							error "${PREF}Неверно указана архитектура для УДАЛЕНИЯ!";
-							show_line
+							print_error"${PREF}Неверно указана архитектура для УДАЛЕНИЯ!";
+							print_line
 						}
 						if [ "${list_size}" = 1 ]; then
 							choice=1
@@ -945,7 +986,7 @@ manage_to_remove_arch_container(){
 	#							если такой контейнер был ранее создан
 								remove_arch_container "${_arch}" "${list_dc}"
 							else
-								warning "Контейнер с архитектурой не существует ${_arch}" && when_bad "пропускаем"
+								print_warning "Контейнер с архитектурой не существует ${_arch}" && when_err "пропускаем"
 							fi
 							num=$((num + 1))
 						done
@@ -956,18 +997,18 @@ manage_to_remove_arch_container(){
 	#						если такой контейнер был ранее создан
 							remove_arch_container "${arch}" "${list_arch}"
 						else
-							warning "Контейнер с архитектурой не существует ${arch}" && when_bad "пропускаем"
+							print_warning "Контейнер с архитектурой не существует ${arch}" && when_err "пропускаем"
 						fi
 					fi
 				fi
 			else
-				ready "${PREF}Контейнеры для сборки" && when_bad "ОТСУСТВУЮТ!"
+				ready "${PREF}Контейнеры для сборки" && when_err "ОТСУСТВУЮТ!"
 			fi
 	    fi
 	else
-		ready "${PREF}При удалении архитектура сборки" && when_bad "НЕ ЗАДАНА!"
+		ready "${PREF}При удалении архитектура сборки" && when_err "НЕ ЗАДАНА!"
 	fi
-	show_line
+	print_line
 
 }
 #-------------------------------------------------------------------------------
@@ -994,20 +1035,20 @@ update_me(){
 		cd "${tmp_path}" || exit 1
 		cp -rf "${app_path}/." "../" || exit 1
 		cd .. && rm -rf "./$(basename "${tmp_path}")" || exit 1
-	} && when_ok "удачно!" || when_bad "с ошибками!"
-	show_line
+	} && when_ok "удачно!" || when_err "с ошибками!"
+	print_line
 }
 #-------------------------------------------------------------------------------
 # Удаляем готовый образ и собираем его заново для запуска контейнера
 #-------------------------------------------------------------------------------
 show_help(){
 
-    print_line_sim "="
-    echo -e " ${BLUE}Котомка [kotomka] - скрипт предназначенный для быстрого развертывания среды разработки Entware"
-    echo -e " в Docker-контейнере для роутеров Keenetic с целью сборки пакетов на языках семейства Bash, С, С++.${NOCL}"
-    print_line_sim "="
-    echo -e " ${BLUE}Аргументы одиночные:${NOCL}"
-    print_line_sim "=" '' "${len_line}"
+    print_line
+    print_warning " Котомка [kotomka] - скрипт предназначенный для быстрого развертывания среды разработки Entware"
+    print_warning " в Docker-контейнере для роутеров Keenetic с целью сборки пакетов на языках семейства Bash, С, С++."
+    print_line
+    print_warning " Аргументы одиночные:"
+    print_line
     echo " build    		[-bl] - сборка образа на основании которого будут собираться контейнеры."
     echo " rebuild  	    	[-rb] - удаляем готовый образ и собираем его заново."
     echo " version|ver   		[-vr] - отображаем текущую версию собираемого пакета"
@@ -1015,7 +1056,7 @@ show_help(){
     echo "                  	    	<N-stage-rel>, гду N - номер версии, например 1.0.12"
     echo "                  	    	stage - стадия разработки [alpha, betta, preview]"
     echo "                  	    	rel - выпускаемый номер релиза, например 01"
-	print_line_sim "="
+	print_line
     echo " make     		[-mk] - сборка пакета и копирование его на роутер"
 	echo " make debug|deb       	      - сборка пакета в режиме отладки."
     echo " copy|install	[-cp|-in] - копирование уже собранного пакета на роутер"
@@ -1025,9 +1066,9 @@ show_help(){
     echo " reset    	   	[-rs] - cбрасываем пакет в состояние до установки языка разработки."
     echo " update			[-up] - обновляем из github данный проект."
     echo " help     	   	[-hl] - отображает настоящую справку"
-    print_line_sim "="
+    print_line
     echo -e " ${BLUE}Аргументы с заданной архитектурой:${NOCL}"
-    print_line_sim "="
+    print_line
     echo " <arch> make 		[-mk] - сборка пакета и копирование его на роутер для указанной архитектуры,"
     echo "                  	    	где arch может принимать следующие значения: ."
     echo "                  		all - для всех типов архитектур в файле конфигурации '${DEV_CONFIG_NAME}'."
@@ -1043,9 +1084,9 @@ show_help(){
     echo " <arch> remove		[-rm] - производим удаление контейнера."
 	echo " <arch> term 		[-tr] - подключение к контейнеру под пользователем ${USER} для arch архи-ры."
 	echo " <arch> root 		[-rt] - подключение к контейнеру под пользователем root для arch архи-ры."
-    print_line_sim "="
+    print_line
     echo -e " Примеры запуска:"
-    print_line_sim "="
+    print_line
     echo  " ./build.run mips make 	      - запускаем сборку пакета для платформы mips."
     echo  " ./build.run mipsel rm        - удаляем контейнер для платформы mips."
     echo  " ./build.run build            - запускаем сборку образа среды разработки, который служит основанием"
@@ -1055,10 +1096,10 @@ show_help(){
     echo  " ./build.run mipsel term      - заходим в ранее собранный контейнер под именем master с mipsel."
 	echo  " ./build.run term	      - заходим в ранее собранный контейнер под именем разработчика,"
 	echo  " 			        но в отличии от варианта выше, выбрираем из диалога архи-ру запуска."
-    print_line_sim "="
+    print_line
 }
 
-show_line
+print_line
 prepare_code_structure
 
 args="$(set_debug_status "${*}")"
@@ -1068,7 +1109,10 @@ if [[ "${args}" =~ reset|-rs ]] ; then
     reset_data;
     exit 0;
 else
-    [[ "${args}" =~ rebuild|-rb ]] && reset_data
+    [[ "${args}" =~ rebuild|-rb ]] && {
+    	reset_data
+    	prepare_code_structure
+    }
     check_dev_language
 fi
 
@@ -1094,7 +1138,7 @@ case "${arg_2}" in
 	remove|rm|del|-rm)						manage_to_remove_arch_container "${arg_1}";;
 
 	*)
-											error "${PREF}Аргументы запуска скрипта не заданы, либо не верны!";
+											print_error"${PREF}Аргументы запуска скрипта не заданы, либо не верны!";
                             				show_help
     ;;
 esac
