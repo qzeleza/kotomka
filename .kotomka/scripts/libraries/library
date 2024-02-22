@@ -28,7 +28,7 @@ DEV_CONFIG_FILE="${ROOT_PATH_ARG}/build.conf"
 . "${DEV_CONFIG_FILE}"
 #set -e
 
-PREF='>> '
+PREF=''
 WAITING="ЖДИТЕ"
 
 GPT_TOKEN=@GPT_TOKEN
@@ -109,15 +109,27 @@ G_ID=5001
 #-------------------------------------------------------------------------------
 set_user_group_for_path(){
 
-	local path=${1} user=${2} group=${3}
+	local path=${1} user=${2} uid=${3} group=${4} gid=${5}
 
 	# Создаем их, если не существуют
 	SUDO=""; command -v sudo &>/dev/null && SUDO=sudo
-	getent group ${group} >/dev/null 2>&1 || ${SUDO} groupadd ${group} >/dev/null 2>&1
-	id ${user} >/dev/null 2>&1 || ${SUDO} useradd -g ${group} -M ${user} >/dev/null 2>&1
+#	Проверяем группу и ее id
+	if getent group ${group} >/dev/null 2>&1 ; then
+		[ "$(getent group ${group} | cut -d: -f3)" != ${gid} ] && ${SUDO} groupmod -g ${gid} ${group}
+	else
+		${SUDO} groupadd -g ${gid} ${group} >/dev/null 2>&1
+	fi
+
+#	проверяем пользователя и его id
+	if id ${user} >/dev/null 2>&1 ; then
+		[ "$(id -u ${user})" != ${uid} ] && ${SUDO} usermod -u ${uid} ${user}
+	else
+		${SUDO} useradd -m ${uid} -g ${group} -M ${user} >/dev/null 2>&1
+	fi
 
 #	Устанавливаем права на папку сборки, пользователя, который должен быть по умолчанию
 	[ -d "${path}" ] && chown -R ${user}:${group} ${path} >/dev/null 2>&1
+
 }
 
 #-------------------------------------------------------------------------------
@@ -346,13 +358,13 @@ copy_app_to_router(){
 
 	if ! [ -f "${PACKAGES_PATH}/${app_tar_name}" ]; then
 		if ! [ -f "${ipk_file}" ]; then
-			print_error"Файл ${ipk_file}"
-			print_error"не найден в целевом целевом контейнере."
+			print_error "Файл ${ipk_file}"
+			print_error "не найден в целевом целевом контейнере."
 			exit 1
 		else
 			cp "${ipk_file}" "${PACKAGES_PATH}/" || \
-				print_error"Произошла ошибка при копировании файла"
-				print_error"${ipk_file}"
+				print_error "Произошла ошибка при копировании файла"
+				print_error "${ipk_file}"
 				exit 1
 		fi
 	fi

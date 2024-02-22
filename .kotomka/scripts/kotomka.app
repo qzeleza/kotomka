@@ -25,7 +25,7 @@
 RED="\033[1;31m";
 BLUE="\033[36m";
 NOCL="\033[m";
-PREF='>> '
+PREF=''
 SEP=
 
 PACKAGE_APP_NAME=kotomka
@@ -135,14 +135,14 @@ reset_data(){
     [ "${answer}" = y ] && {
     	print_line
     	ready "${PREF}Данные удалены "
-    	rm -rf "${PATH_PREFIX}${DEV_ROOT_PATH}"
-    	docker system prune --all --force --volumes
 		purge_containers "$(docker ps -aq -f name="${APP_NAME}")" &>/dev/null && {
-			when_ok
+			rm -rf "${PATH_PREFIX}${DEV_ROOT_PATH}"
+    		docker system prune --all --force --volumes &>/dev/null
+
 			print_warning "${PREF}Пакет сброшен в первоначальное состояние."
 			print_warning "${PREF}Папка с исходниками ${RED}${DEV_ROOT_PATH}${NOCL} удалена!"
 			print_warning "${PREF}Удалены все контейнеры приложения ${RED}${APP_NAME}${NOCL}!"
-		} || when_err "с ошибками!"
+		} && when_ok "УСПЕШНО" || when_err "с ошибками!"
 
 		print_line
     }
@@ -261,7 +261,7 @@ set_dev_language(){
             ;;
         *)
             print_line
-            print_error"${PREF}Не распознан язык разработки в файле ${DEV_CONFIG_FILE}"
+            print_error "${PREF}Не распознан язык разработки в файле ${DEV_CONFIG_FILE}"
             print_warning "${PREF}Текущее значение DEV_LANGUAGE = ${DEV_LANGUAGE}."
             print_warning "${PREF}Задайте одно из значений: C (Си), CPP (C++) или BASH."
             print_warning "${PREF}Значения можно задавать на русском или английском."
@@ -303,8 +303,8 @@ check_dev_language(){
 
     if [ -n "${manifest_file}" ]; then
         if ! cat < "${manifest_file}" | grep -qi "для ${DEVELOP_EXT}"; then
-            print_error"${PREF}Обнаружено несоответствие файлов проекта с заявленным"
-            print_error"${PREF}языком разработки для архитектуры процессора '${arch}'"
+            print_error "${PREF}Обнаружено несоответствие файлов проекта с заявленным"
+            print_error "${PREF}языком разработки для архитектуры процессора '${arch}'"
             set_dev_language
         fi
     else
@@ -401,6 +401,10 @@ purge_containers(){
 	docker rm ${container_id}
 }
 
+get_container_log(){
+	container_id_or_name=$(echo "${1}" | awk '{print toupper($0)}')
+	docker logs "${1}" --details --tail 150 | grep -iE 'error|fault' -A100 -B10
+}
 
 print_error_log_line(){
 
@@ -455,6 +459,7 @@ run_when_error(){
 #   $4 - архитектура процессора
 #-------------------------------------------------------------------------------
 docker_exec(){
+
     container_id=${1};
     script_to_run=${2};
     root=${3};
@@ -465,12 +470,12 @@ docker_exec(){
     else TERMINAL='false'; fi
 
 	# Создаем их, если не существуют
-	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${GROUP}"
+	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
 
 #	Устанавливаем права на папку сборки, пользователя, который должен быть по умолчанию
 	mkdir -p ${PATH_TO_MY_APP}/code && chown -R ${user_name}:${group_name} ${PATH_TO_MY_APP}/code &>/dev/null
 
-    if ! docker exec \
+    docker exec \
 			-i -t \
 			--workdir "${WORK_PATH_IN_CONTAINER}" \
 			--env ROUTER_LIST="${ROUTER_LIST}" \
@@ -484,17 +489,22 @@ docker_exec(){
            	--env IPK_PATH="${DEV_IPK_NAME}" \
            	--env TERMINAL="${TERMINAL}" \
            	--user "${user}" \
-           	 "${container_id}" /bin/bash ${script_to_run} >/dev/null 2>&1 ; then
+           	 "${container_id}" /bin/bash ${script_to_run}  || {
 
-		print_error "Произошла ошибка при подключении к контейнеру..."
-		print_warning "Сейчас контейнер будет остановлен, удален и пересобран."
+           	 	when_err "ОШИБКА" "$(get_container_log "${container_name}")"
+           	 	print_warning "Сейчас контейнер будет остановлен, удален и пересобран."
+				container_name="$(get_container_name "${arch_build}")"
+				container_id=$(docker ps -qa  --filter name="${container_name}")
 
-		container_name="$(get_container_name "${arch_build}")"
-		container_id=$(docker ps -qa  --filter name="${container_name}")
+				docker stop "${container_id}" &>/dev/null && docker rm "${container_id}" &>/dev/null
+				container_manager_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}"
+				exit 0;
 
-		docker stop "${container_id}" &>/dev/null && docker rm "${container_id}" &>/dev/null
-		container_manager_to_make "${SCRIPT_TO_MAKE}" "" "${arg_1}"
-		exit 0;
+           	 }
+
+
+
+
 
 #		if [ -n "${script_to_run}" ] ; then
 #			run_when_error "${container_name}"
@@ -507,7 +517,7 @@ docker_exec(){
 #		container_id=$(docker ps -qa  --filter name="${container_name}")
 #		docker_exec "${container_id}" "${SCRIPT_TO_CLEAN}" "${root}" "${arch_build}"
 #		fi
-   	fi
+
 
 }
 
@@ -526,11 +536,14 @@ docker_run(){
     user=${4}
     context=$(dirname "$(dirname "$(pwd)")")
 
+	# Создаем их, если не существуют
+	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
+
     if [ -n "${container_name}" ] ; then name_container="--name ${container_name}"; else name_container=""; fi
 	if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; TERMINAL='true';
     else TERMINAL='false'; fi
 
-    if ! docker run \
+    docker run \
            	--workdir "${WORK_PATH_IN_CONTAINER}" \
            	-i -t -d \
 			--env ROUTER_LIST="${ROUTER_LIST}" \
@@ -547,18 +560,22 @@ docker_run(){
            	--user "${user}" \
            	${name_container} \
            	--mount type=bind,src="${context}",dst="${APPS_ROOT}"/"${APP_NAME}" \
-           	"$(get_image_id)" /bin/bash &>/dev/null ; then
+           	"$(get_image_id)" /bin/bash &>/dev/null || when_err "ОШИБКА" "$(get_container_log "${container_name}")"
 
-		if [ -n "${script_to_run}" ] ; then
-			run_when_error "${container_name}"
-			exit 1
+
+
+
+
+#		if [ -n "${script_to_run}" ] ; then
+#			run_when_error "${container_name}"
+#			exit 1
 #		else
 #
 #			docker_run "${SCRIPT_TO_CLEAN}" "${container_name}"  "${arch_build}" "${user}"
-		fi
-	else
-		docker stop ${container_name} &>/dev/null
-    fi
+#		fi
+#	else
+#		docker stop ${container_name} &>/dev/null
+#    fi
 }
 
 
@@ -597,7 +614,7 @@ connect_when_stopped(){
     [ "${run_with_root}" = yes ] && _user=root
     ready  "${PREF}Контейнер разработки ${BLUE}${container_name}${NOCL} смонтирован, но..." && when_err "ОСТАНОВЛЕН"
 	ready "${PREF}Монтируем контейнер..."
-	docker start "${container_id_exited}" && when_ok || when_err
+	docker start "${container_id_exited}" >/dev/null 2>&1 && when_ok || when_err "ОШИБКА" "$(get_container_log \"${container_id_exited}\")"
     print_line
     print_warning "${PREF}Заходим внутрь контейнера..."
     docker_exec "${container_id_exited}" "${script_to_run}" "${_user}" "${arch}"
@@ -627,11 +644,13 @@ connect_when_not_mounted(){
 	container_id=$(docker ps -qa  --filter name="${container_name}")
 
 	ready "${PREF}Монтируем контейнер ${BLUE}${container_name}${NOCL}..."
+
 	docker start "${container_id}" &> /dev/null && when_ok || when_err
-	print_info ""
+	print_info "Заходим внутрь контейнера"
 	print_line
 	docker_exec  "${container_id}" "${1}" "${_user}" "${arch}"
 #    fi
+
 }
 
 #-------------------------------------------------------------------------------
@@ -640,6 +659,9 @@ connect_when_not_mounted(){
 build_image(){
 
     ready "Запускаем сборку НОВОГО образа ${BLUE}${IMAGE_NAME}${NOCL}"
+
+	# Создаем их, если не существуют
+	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
 
     context="$(dirname "$(pwd)")/"
     docker build \
@@ -652,8 +674,9 @@ build_image(){
         --build-arg APP_NAME="${APP_NAME}" \
         --build-arg TZ=Europe/Moscow \
         --file "${DOCKER_FILE}" \
-        "${context}" >/dev/null 2>&1 && when_ok || when_err "ПРОБЛЕМА" \
-        	"${PREF}В процессе сборки Docker-образа '${IMAGE_NAME}' возникли ошибки."
+        "${context}" >/dev/null 2>&1 && when_ok || {
+        	when_err "ПРОБЛЕМА"  "$(get_container_log "${IMAGE_NAME}")"
+        }
 #
 #        print_line
 #        print_info "${PREF}Docker-образ собран без ошибок."
@@ -673,18 +696,23 @@ build_image(){
 #-------------------------------------------------------------------------------
 rebuild_image(){
 
-    ready "${PREF}Удаляем предыдущий образ '${IMAGE_NAME}'"
+
     script_to_run=${1}
 
-    container_id_exited=$(docker ps --filter ancestor="${IMAGE_NAME}" -q)
-    if [ -n "${container_id_exited}" ] ; then
-    	purge_containers "${container_id_exited}" &>/dev/null
-    else
-        container_id_exited=$(docker ps -a --filter ancestor="${IMAGE_NAME}" -q)
-        [ -n "${container_id_exited}" ] && docker rm ${container_id_exited} &> /dev/null
-    fi
+	ready "${PREF}Удаляем предыдущий образ ${BLUE}${IMAGE_NAME}${NOCL}"
+	{
+		container_id_exited=$(docker ps --filter ancestor="${IMAGE_NAME}" -q)
+		if [ -n "${container_id_exited}" ] ; then
+			purge_containers "${container_id_exited}" &>/dev/null
+		else
+			container_id_exited=$(docker ps -a --filter ancestor="${IMAGE_NAME}" -q)
+			[ -n "${container_id_exited}" ] && docker rm ${container_id_exited} &> /dev/null
+		fi
 
-    get_image_id && docker rmi -f "${IMAGE_NAME}" && when_ok || when_err
+		get_image_id && docker rmi -f "${IMAGE_NAME}" &>/dev/null
+
+	}  && when_ok || when_err
+
 	build_image
 }
 
@@ -749,18 +777,18 @@ ask_arch_to_run(){
 	for _arch_ in ${ARCH_LIST} ; do
 
 		if echo "${_arch_}" | grep -Eq '\*'; then
-			echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
+			ready " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
 			when_ok "СМОНТИРОВАН"
 		else
 			if [ "${script_to_run}" = remove ] ; then
 				if echo "${list_arch_menu}" | grep -q "${_arch_}" ; then
-					echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
+					ready " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
 					when_ok "ОСТАНОВЛЕН" "${BLUE}"
 				else
 					count=$((count-1))
 				fi
 			else
-				echo -ne " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
+				ready " ${count}. ${BLUE}${_arch_//\*/}${NOCL}"
 				if echo "${list_arch_menu}"  | grep -q "${_arch_}" ; then
 					when_ok "ОСТАНОВЛЕН" "${BLUE}"
 				else
@@ -812,7 +840,7 @@ container_manager_to_make(){
 
     if is_mac_os_x ; then
         ps -x | grep 'Docker.app' | grep -vq grep || {
-            print_error"${PREF}Сервис Docker не запущен! Для запуска наберите команду 'open -a Docker'"
+            print_error "${PREF}Сервис Docker не запущен! Для запуска наберите команду 'open -a Docker'"
             print_line
             exit 1
         }
@@ -850,7 +878,7 @@ container_manager_to_make(){
 #        		если указана в аргументах конкретная архитектура
 				choice=$(echo "${list_arch}" | grep -n "${arch_to_run}" | head -1 | cut -d':' -f1)
 				if [ -z "${choice}" ] ; then
-					print_error"${PREF}Неверно указана архитектура для запуска контейнера!"
+					print_error "${PREF}Неверно указана архитектура для запуска контейнера!"
 					print_line
 					ask_arch_to_run "${list_arch}" "${script_to_run}" choice
 				fi
@@ -893,7 +921,7 @@ package_version_set(){
         ver_main="$(echo "${ver_to_set}" | tr -d 'a-zA-Z' | cut -d '-' -f1) "
 
         if [ -z "$(echo "${ver_main}" | tr -d ' ')" ]; then
-            print_error"${PREF}Данные о версии пакета введены некорректно!"
+            print_error "${PREF}Данные о версии пакета введены некорректно!"
         else
             if echo "${ver_to_set}" | grep -q '-' ; then
                 ver_stage="$(echo "${ver_to_set}" | cut -d '-' -f2 | tr -d '0-9') "
@@ -964,7 +992,7 @@ manage_to_remove_arch_container(){
 					choice=$(echo "${list_arch}" | grep -n "${arch_build}" | head -1 | cut -d':' -f1)
 					if [ -z "${choice}" ] ; then
 						[[ "${arch_build}" =~ remove|rm|del|-rm ]] || {
-							print_error"${PREF}Неверно указана архитектура для УДАЛЕНИЯ!";
+							print_error "${PREF}Неверно указана архитектура для УДАЛЕНИЯ!";
 							print_line
 						}
 						if [ "${list_size}" = 1 ]; then
@@ -1138,7 +1166,7 @@ case "${arg_2}" in
 	remove|rm|del|-rm)						manage_to_remove_arch_container "${arg_1}";;
 
 	*)
-											print_error"${PREF}Аргументы запуска скрипта не заданы, либо не верны!";
+											print_error "${PREF}Аргументы запуска скрипта не заданы, либо не верны!";
                             				show_help
     ;;
 esac

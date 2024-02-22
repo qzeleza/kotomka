@@ -63,9 +63,12 @@ stop_spinner(){
 # Проверяем запущен лди бегунок и убиваем задание 
 # а также, включаем курсор на экране
 #---------------------------------------------------------------------------------
-    [ -n "${SPINNER_PID}" ] && ps | grep -q " ${SPINNER_PID} " && kill -9 ${SPINNER_PID}
+    if [ -n "${SPINNER_PID}" ] && ps | grep -q " ${SPINNER_PID} " ; then
+    	kill ${SPINNER_PID}
+    	disown ${SPINNER_PID}
+    fi
     # включаем показ курсора на экране
-    printf "${CRS_ON}"                 
+    printf "${CRS_ON}"
 }
 
 ready() {
@@ -85,17 +88,66 @@ ready() {
 	# выводим префикс сообщения ">> "
 	# выводим тест сообщения "- текст"
 
-	printf "${PREFIX}${HOLD} ${color}${MSG}${NOCL}"
+#	чистим от управляющих символов,
+#	что бы вывести весь текст одним желтым цветом
+	msg=$(clean_escape "${MSG}")
 
+#	Печатаем строку
+	printf "${PREFIX}${SM_WAIT} ${color}${msg}${NOCL}"
+
+# 	Переводим курсор в крайнюю левую позицию
 	READY_TO_END=$((${APP_SCREEN_WIDTH} - 3))
 	READY_TO_END="\e[${READY_TO_END}C"
-	printf "${CRS_TO1}${READY_TO_END}"                       	# переводим курсор в крайнюю левую позицию
+	printf "${CRS_TO1}${READY_TO_END}"
 
     spinner &                                   		# запускаем в фоне бегунок
     SPINNER_PID=$!                              		# сохраняем PID запущенного бегунка
 }
 
+ready_end() {
+#---------------------------------------------------------------------------------
+#   Выводим после сообщения, выведенное функцией ready
+#   текст что все хорошо (статус выполнения)
+#
+#   Аргументы функции
+#   $1 - текст успешного исполнения операции
+#   $2 - управляющая последовательность цвета сообщения [по умолчанию: ${GREEN}]
+#---------------------------------------------------------------------------------
+
+    # останавливаем бегунок, если он запущен
+    stop_spinner
+
+    local msg="$1" color=${2} sim_ready=${3} description=${4}
+
+    # удаляем из сообщения выведенное ready точки на конце, если они есть
+    MSG=$(printf "${MSG}" | sed 's/\.*$//')
+
+    len=$((APP_SCREEN_WIDTH - ${#msg} - 1))               	# вычисляем длину сообщения и прибавляем 5
+    local to_right="${CRS_TO1}\e[${len}C"                     # готовим переменную для перехода на вычисленную позицию
+
+	msg=$(printf "${msg}" | tr '[:lower:]' '[:upper:]' )
+
+    # выводим его на экран: чистим сроку,
+    # переходим в правую крайнюю позицию и печатаем галочку
+    # далее пробел и текст сообщения (без точек) и далее статус в цвете
+    printf "${NOCL}${CRS_STR_CL}${CRS_TO1}${PREFIX}${sim_ready} ${MSG}${to_right}${color}${msg}${NOCL}\n"
+
+	# если задано описание ошибки печатаем его на следующей строке
+	if [ -n "${description}" ] ; then
+		err_screen_width=$((APP_SCREEN_WIDTH - 5))
+		print_line
+		err_desc="$(printf "${err_desc}" | awk 1 ORS="\n${PREFIX}  " | fold -w ${err_screen_width})"
+		printf "${PREFIX}  ${RED}Описание ошибки${NOCL}\n     "
+		print_line ${err_screen_width} '─'
+		printf "${PREFIX}  ${err_desc}\n"
+	fi
+}
+
 when_ok() {
+	ready_end "${1:-ГОТОВО}" "${GREEN}" "${SM_OK}"
+}
+
+ready_ok() {
 #---------------------------------------------------------------------------------
 #   Выводим после сообщения, выведенное функцией ready
 #   текст что все хорошо (статус выполнения)
@@ -128,6 +180,10 @@ when_ok() {
 }
 
 when_err() {
+	ready_end "${1:-ОШИБКА}" "${RED}" "${SM_CROSS}"	"${2}"
+}
+
+ready_err() {
 #---------------------------------------------------------------------------------
 #   Выводим после сообщения, выведенное функцией ready
 #   текст что случилась ошибка (статус выполнения)
@@ -143,6 +199,9 @@ when_err() {
     local err_status="${1:-ОШИБКА}"
     local err_desc="${2}"
 
+    # удаляем из сообщения выведенное ready точки на конце, если они есть
+    MSG=$(printf "${MSG}" | sed 's/\.*$//')
+
     len=$((APP_SCREEN_WIDTH - ${#err_status} - 1))               	# вычисляем длину сообщения и прибавляем 5
     local to_right="${CRS_TO1}\e[${len}C"                     # готовим переменную для перехода на вычисленную позицию
 
@@ -152,8 +211,12 @@ when_err() {
     printf "${NOCL}${CRS_STR_CL}${CRS_TO1}${PREFIX}${SM_CROSS} ${MSG}${to_right}${RED}${err_status}${NOCL}\n"
     # если задано описание ошибки печатаем его на следующей строке
     [ -n "${err_desc}" ] && {
+    	err_screen_width=$((APP_SCREEN_WIDTH - 5))
         print_line
-        printf "    ${RED}${err_desc}${NOCL}\n"
+        err_desc="$(printf "${err_desc}" | awk 1 ORS="\n${PREFIX}  " | fold -w ${err_screen_width})"
+        printf "${PREFIX}  ${RED}Описание ошибки${NOCL}\n     "
+        print_line ${err_screen_width} '─'
+        printf "${PREFIX}  ${err_desc}\n"
     }
     # очищаем глобальные переменные
 #    MSG='';
@@ -187,3 +250,4 @@ run_then() {
     fi 
 
 }
+

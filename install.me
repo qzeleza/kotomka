@@ -6,6 +6,10 @@ DEBUG=1
 
 # Ширина рабочей области
 SCREEN_WIDTH=84
+PREFIX='♫♫♫ '
+BLUE="\e[36m"
+GREEN="\e[32m"               # темно зеленый цвет текста
+NOCL="\e[m"                  # возвращает текст к настройкам по умолчанию.
 
 # Считываем данные от пользователя
 read_val(){
@@ -13,6 +17,7 @@ read_val(){
 	[ -n "${def}" ] && def="['${3}']"
 	while :
 	do
+		printf "${BLUE}${1} ${def}: ${NOCL}"
 		read -p "${1} ${def}: " val
 		if [ -n "${val}" ]; then
 			eval "${2}=${val}"
@@ -27,9 +32,9 @@ read_val(){
 
 }
 # печатаем линию
-print_line()(printf "%${SCREEN_WIDTH}s\n" | sed 's/ /═/g')
+print_line()(printf "${BLUE}%${SCREEN_WIDTH}s${NOCL}\n" | sed 's/ /═/g')
 # печатаем инфо сообщение
-print_info()(print "${1}\n")
+print_info()(printf "${BLUE}${PREFIX}${1}${NOCL}\n")
 # проверяем наличие команды на устройстве
 is_here()([ -n "$(command -v ${1})" ])
 
@@ -55,7 +60,32 @@ is_here docker || {
 	curl -fsSL https://get.docker.com -o get-docker.sh
 	DRY_RUN=1 sh ./get-docker.sh
 }
+set_user_group_for_path(){
+	local path=${1} user=${2} uid=${3} group=${4} gid=${5}
 
+	# Создаем их, если не существуют
+	SUDO=""; command -v sudo &>/dev/null && SUDO=sudo
+#	Проверяем группу и ее id
+	if getent group ${group} >/dev/null 2>&1 ; then
+		[ "$(getent group ${group} | cut -d: -f3)" != ${gid} ] && ${SUDO} groupmod -g ${gid} ${group}
+	else
+		${SUDO} groupadd -g ${gid} ${group} >/dev/null 2>&1
+	fi
+
+#	проверяем пользователя и его id
+	if id ${user} >/dev/null 2>&1 ; then
+		[ "$(id -u ${user})" != ${uid} ] && ${SUDO} usermod -u ${uid} ${user}
+	else
+		${SUDO} useradd -m ${uid} -g ${group} -M ${user} >/dev/null 2>&1
+	fi
+
+#	Устанавливаем права на папку сборки, пользователя, который должен быть по умолчанию
+	[ -d "${path}" ] && chown -R ${user}:${group} ${path} >/dev/null 2>&1
+}
+get_file_var(){
+	local file=$1 var_name=$2
+	cat < ${file} | sed -n 's/'${var_name}'=\(.*\)/\1/p'
+}
 
 # установка обязательных пакетов
 is_here git || apps_to_install="git"
@@ -86,6 +116,15 @@ cd ${PATH_TO_MY_APP}
 #	меняем название текущей папки для размещения всех проектов
 	path=$(echo "${APPS_PATH}" | sed 's|\/|\\/|g')
 	sed -i "s/@APPS_ROOT/${path}/g" "${PATH_TO_MY_APP}/.kotomka/scripts/libraries/library"
+
+###	Создаем пользователя в системе и группу если их еще нет
+	lib="./.kotomka/scripts/libraries/library"
+	user=$(get_file_var ${lib} "USER")
+	uid=$(get_file_var ${lib} "U_ID")
+	group=$(get_file_var ${lib} "GROUP")
+	gid=$(get_file_var ${lib} "G_ID")
+
+	set_user_group_for_path "${PATH_TO_MY_APP}" "${user}" "${uid}" "${group}" "${gid}"
 
 #	меняем расширение для основного файла сборки значением из файла конфигурации
 	dev_extension=$(cat < "${PATH_TO_MY_APP}/build.conf" | sed -n 's/DEV_LANGUAGE=\(.*\)/\1/p')

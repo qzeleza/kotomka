@@ -25,10 +25,13 @@
 set -e
 
 BASEDIR=$(dirname "$(dirname "${0}")")
+. "${BASEDIR}/scripts/libraries/screen"
+. "${BASEDIR}/scripts/libraries/status"
+
 . "${BASEDIR}/scripts/libraries/library" "$(dirname "${BASEDIR}")"
 . "${BASEDIR}/scripts/emate"
 
-PREF='>> '
+PREF=''
 DEBUG=NO
 PACKAGE_FINAL_PATH=package/${USER}/${APP_NAME}
 APP_MAKE_BUILD_PATH=${APPS_ROOT}/entware/${PACKAGE_FINAL_PATH}
@@ -238,9 +241,9 @@ do_compile_package(){
 						error_file_name=$(echo "${compile_text}" | grep -iE "${re_exp}"  | cut -d':' -f1 | sort -u)
 					fi
 					echo ''; print_line
-					print_error">> ОПИСАНИЕ ОШИБКИ:"
+					print_error ">> ОПИСАНИЕ ОШИБКИ:"
 					print_line ; echo ''
-					print_error"$(echo -e "${compile_text}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}" )\n"
+					print_error "$(echo -e "${compile_text}" | sed 's/^\(.*\)/\t\1/' | fmt -w "${LINE_WIDTH}" )\n"
 					print_line
 					print_info ">> ПОДСКАЗКА ПО ОШИБКЕ:"
 					print_line ; echo ''
@@ -360,15 +363,7 @@ print_compile_foot(){
 prepare_to_run(){
 	find "${APPS_PATH}" -name .DS_Store -exec rm -f {} \;
 
-
-    if [ "$(stat -c '%G' "${APP_MAKE_BUILD_PATH}")" != "${GROUP}" ] \
-    || [ "$(stat -c '%U' "${APP_MAKE_BUILD_PATH}")" != "${USER}" ]; then
-        chown -R "${USER}:${GROUP}" "${APP_MAKE_BUILD_PATH}"
-    fi
-
 	main_file_name=main #${APP_NAME}
-	ls -ila ${APP_MAKE_BUILD_PATH}
-
 	sed -i "s/int ${APP_NAME}()/int main()/" "${APP_MAKE_BUILD_PATH}/${DEV_SRC_PATH}/${main_file_name}.${DEVELOP_EXT}"
 }
 
