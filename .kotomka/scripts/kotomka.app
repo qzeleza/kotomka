@@ -470,7 +470,7 @@ docker_exec(){
     else TERMINAL='false'; fi
 
 	# Создаем их, если не существуют
-	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
+#	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
 
 #	Устанавливаем права на папку сборки, пользователя, который должен быть по умолчанию
 	mkdir -p ${PATH_TO_MY_APP}/code && chown -R ${user_name}:${group_name} ${PATH_TO_MY_APP}/code &>/dev/null
@@ -537,7 +537,7 @@ docker_run(){
     context=$(dirname "$(dirname "$(pwd)")")
 
 	# Создаем их, если не существуют
-	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
+#	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
 
     if [ -n "${container_name}" ] ; then name_container="--name ${container_name}"; else name_container=""; fi
 	if [ -z "${script_to_run}" ]; then WORK_PATH_IN_CONTAINER="${APPS_ROOT}/entware"; TERMINAL='true';
@@ -636,7 +636,7 @@ connect_when_not_mounted(){
     ready "${PREF}Контейнер ${BLUE}${container_name}${NOCL}" && when_ok "ЕЩЕ НЕ СОЗДАН"
 
 
-    user_group_id="${U_ID}:${G_ID}"
+    user_group_id="${USER}:${GROUP}"
     [ -z "${script_to_run}" ] && [ "${run_with_root}" = yes ] && user_group_id="root:root";
 #   а если контейнера нет - то создаем его и запускаем
 	ready  "${PREF}Создаем контейнер. Ожидайте, займет некоторое время..."
@@ -658,10 +658,11 @@ connect_when_not_mounted(){
 #-------------------------------------------------------------------------------
 build_image(){
 
-    ready "Запускаем сборку НОВОГО образа ${BLUE}${IMAGE_NAME}${NOCL}"
+    ready "Запускаем сборку НОВОГО образа ${BLUE}${IMAGE_NAME}${NOCL}" && when_ok
 
 	# Создаем их, если не существуют
-	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
+#	set_user_group_for_path "${APPS_ROOT}/${APP_NAME}" "${USER}" "${U_ID}" "${GROUP}" "${G_ID}"
+	print_line
 
     context="$(dirname "$(pwd)")/"
     docker build \
@@ -674,10 +675,14 @@ build_image(){
         --build-arg APP_NAME="${APP_NAME}" \
         --build-arg TZ=Europe/Moscow \
         --file "${DOCKER_FILE}" \
-        "${context}" >/dev/null 2>&1 && when_ok || {
-        	when_err "ПРОБЛЕМА"  "$(get_container_log "${IMAGE_NAME}")"
-        }
-#
+        "${context}" 2>&1  > /tmp/docker.log &
+		cat < /tmp/docker.log | less | fmt -w 80 || cat < /tmp/docker.log | grep error -A1000
+
+exit
+#        | fold_text ||  {
+#        	when_err "ПРОБЛЕМА"  "$(get_container_log "${IMAGE_NAME}")"
+#        }
+# >/dev/null 2>&1
 #        print_line
 #        print_info "${PREF}Docker-образ собран без ошибок."
 #
